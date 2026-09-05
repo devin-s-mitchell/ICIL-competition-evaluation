@@ -27,3 +27,17 @@ Raw inputs: `yifengzhu-hf/LIBERO-datasets` (spatial/goal/object/10), `zhouxueyan
 
 `icilval pools generate` runs BPP's LIBERO-Gen scripts with `affordance.yaml` to add
 organizer-generated tasks under `generated/`; those are never published as training data.
+
+## Pool 2026.09-v1
+
+`pool_id` `7bf31989bda4b4147faf68d26f7102fc581e39c73ccd1101c467cc328847d259` — 72 tasks, 720 demonstrations.
+
+| variant kind | count | eligible | valid slots (min / median / max) |
+|---|---|---|---|
+| level | 190 | 190 | 108 / 400 / 400 |
+| lighting | 40 | 40 | 50 / 50 / 50 |
+| pro_pose | 40 | 37 | 0 / 50 / 50 |
+| pro_swap | 40 | 40 | 50 / 50 / 50 |
+| table | 80 | 80 | 20 / 20 / 20 |
+
+Eligible per axis: composition 19, environment 120, object 22, spatial 267.

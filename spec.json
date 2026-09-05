@@ -126,7 +126,7 @@
   "pools": {
     "repo": "robofluent/icil-competition-pools",
     "version": "2026.09-v1",
-    "pool_id": null,
+    "pool_id": "7bf31989bda4b4147faf68d26f7102fc581e39c73ccd1101c467cc328847d259",
     "demos_per_task": 10,
     "init_states_per_task": 50,
     "_comment": "pool_id is filled by `icilval pools build` and must equal pool.json's id; the validator refuses to run on a mismatch."
