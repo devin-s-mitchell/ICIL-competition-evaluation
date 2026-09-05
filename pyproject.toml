@@ -15,10 +15,11 @@ dependencies = [
   "pynacl>=1.5",
   "huggingface_hub>=0.25",
   "safetensors>=0.4",
+  "imageio-ffmpeg>=0.5",
 ]
 
 [project.optional-dependencies]
-sim = ["imageio-ffmpeg>=0.5", "h5py>=3.8"]
+sim = ["h5py>=3.8"]
 convert = ["dill>=0.3.7", "hydra-core>=1.2", "omegaconf>=2.2"]
 schema = ["jsonschema>=4.20"]
 dev = ["pytest>=8", "pytest-cov", "ruff>=0.6", "jsonschema>=4.20", "h5py>=3.8", "imageio-ffmpeg>=0.5"]

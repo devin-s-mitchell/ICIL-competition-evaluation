@@ -269,6 +269,295 @@ def cmd_pools(args) -> int:
     return 2
 
 
+def _parse_ref(text: str):
+    from .ids import ModelRef
+
+    if "@" not in text:
+        raise SystemExit(f"model reference must be repo@revision, got {text!r}")
+    repo, rev = text.split("@", 1)
+    return ModelRef.make(repo, rev)
+
+
+def _local_models(items: list[str] | None) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for item in items or []:
+        repo, _, path = item.partition("=")
+        out[repo] = path
+    return out
+
+
+def _runtime(args, spec):
+    from .daemon import make_runtime
+    from .spec import _repo_root
+
+    root = _repo_root() or Path.cwd()
+    return make_runtime(
+        spec,
+        store_root=Path(args.store),
+        key_file=Path(args.key),
+        pool_dir=Path(args.pool),
+        arch_dir=Path(args.arch) if args.arch else root / "arch",
+        run_root=Path(args.runs),
+        live_url=args.live,
+        live_token=args.live_token,
+        mirror_repo=args.mirror,
+    )
+
+
+def cmd_convert(args) -> int:
+    from .model.convert import convert_checkpoint
+
+    out = convert_checkpoint(
+        args.ckpt, args.out, arch_name=args.arch_name, emit_arch=args.emit_arch
+    )
+    print(json.dumps(out, indent=1))
+    return 0
+
+
+def cmd_fetch(args) -> int:
+    from .submission import fetch_model
+
+    spec = _spec(args)
+    got = fetch_model(_parse_ref(args.ref), Path(args.dest), spec)
+    print(f"{got.path} files={len(got.files)} bytes={got.bytes} skipped={got.skipped}")
+    return 0
+
+
+def cmd_check(args) -> int:
+    from .model.fingerprint import check_submission
+    from .spec import _repo_root
+
+    spec = _spec(args)
+    arch = Path(args.arch) if args.arch else (_repo_root() or Path.cwd()) / "arch"
+    rep = check_submission(Path(args.model), spec, arch)
+    for e in rep.errors:
+        print("error:", e)
+    for w in rep.warnings:
+        print("warning:", w)
+    print(
+        f"params={rep.param_count} bytes={rep.repo_bytes} model_sha256={rep.model_sha256[:16]} {'OK' if rep.ok else 'REJECTED'}"
+    )
+    return 0 if rep.ok else 1
+
+
+def cmd_render_demo(args) -> int:
+    from .pools.demos import render_demo
+    from .pools.schema import Pool
+
+    spec = _spec(args)
+    pool = Pool.load(args.pool)
+    sha = render_demo(
+        pool.path("demos") / f"{args.demo}.npz",
+        args.out,
+        int(spec.media["video"]["fps"]),
+        spec.media["video"],
+    )
+    print(f"{args.out} sha256={sha}")
+    return 0
+
+
+def cmd_run_side(args) -> int:
+    import logging
+
+    from .duel.side_runner import run_side
+    from .pools.schema import Pool
+
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    spec = _spec(args)
+    doc = json.loads(Path(args.units).read_text())
+    units = doc["units"] if isinstance(doc, dict) else doc
+    summary = run_side(
+        side=args.side,
+        model_dir=Path(args.model),
+        arch_dir=Path(args.arch),
+        pool=Pool.load(args.pool),
+        units=units,
+        spec=spec,
+        out_dir=Path(args.out),
+        device=args.device,
+        record_video=not args.no_video,
+    )
+    print(json.dumps(summary, indent=1))
+    return 0
+
+
+def cmd_duel(args) -> int:
+    import logging
+
+    from .duel.orchestrate import DuelFailed, DuelRequest, Orchestrator
+
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    spec = _spec(args)
+    rt = _runtime(args, spec)
+    req = DuelRequest(
+        challenger=_parse_ref(args.challenger),
+        king=_parse_ref(args.king) if args.king else None,
+        size=args.size,
+        skip_model_check=args.skip_model_check,
+        local_models=_local_models(args.local_model),
+        docker_image=args.docker_image,
+        gpus=args.gpus,
+        device=args.device,
+        record_video=not args.no_video,
+    )
+    try:
+        record = Orchestrator(rt).run(req, args.block)
+    except DuelFailed as exc:
+        print("duel failed:", exc)
+        return 1
+    if rt.mirror is not None:
+        rt.mirror.push(rt.store.drain_touched())
+    print(json.dumps(record, indent=1))
+    return 0
+
+
+def cmd_genesis(args) -> int:
+    from .duel.orchestrate import DuelFailed, publish_genesis
+
+    spec = _spec(args)
+    rt = _runtime(args, spec)
+    try:
+        record = publish_genesis(
+            rt,
+            _parse_ref(args.king),
+            args.block,
+            local_models=_local_models(args.local_model),
+            check=not args.skip_model_check,
+        )
+    except DuelFailed as exc:
+        print("genesis refused:", exc)
+        return 1
+    if rt.mirror is not None:
+        rt.mirror.push(rt.store.drain_touched())
+    print(json.dumps(record, indent=1))
+    return 0
+
+
+def cmd_daemon(args) -> int:
+    import logging
+    import threading
+
+    from .daemon import Daemon, DaemonConfig
+    from .queue import Queue
+
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    spec = _spec(args)
+    rt = _runtime(args, spec)
+    queue = Queue(args.queue)
+    if args.admin_token:
+        from .admin import AdminServer
+
+        server = AdminServer(
+            spec, queue, args.admin_token, rt.signer.verify_key_hex, lock=threading.Lock()
+        )
+        server.start_background()
+        print(f"admin listening on http://{server.bind}:{server.port}")
+    cfg = DaemonConfig(
+        store_root=Path(args.store),
+        queue_path=Path(args.queue),
+        run_root=Path(args.runs),
+        docker_image=args.docker_image,
+        local_models=_local_models(args.local_model),
+        once=args.once,
+    )
+    Daemon(rt, queue, cfg).run()
+    return 0
+
+
+def cmd_smoke(args) -> int:
+    """Genesis + a genesis-vs-genesis duel into a fresh store, then verify it. In-process."""
+    import logging
+    import tempfile
+
+    from .canon import Signer
+    from .duel.orchestrate import DuelFailed, DuelRequest, Orchestrator, publish_genesis
+    from .ids import ModelRef
+    from .store.verify import verify_store
+
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    spec = _spec(args)
+    store_root = Path(args.store)
+    key = (
+        Path(args.key)
+        if args.key
+        else Path(tempfile.mkdtemp(prefix="icilval-smoke-")) / "validator.ed25519"
+    )
+    if not key.exists():
+        Signer.generate().save(key)
+    args.key = str(key)
+    args.mirror = None
+    rt = _runtime(args, spec)
+    king = ModelRef.make(args.repo, args.revision)
+    challenger = ModelRef.make(args.repo, args.revision[::-1] if args.same_model else args.revision)
+    local = {args.repo: args.model_dir}
+    block = 1
+    if rt.store.head(spec.track_id) is None or not rt.store.head(spec.track_id).get("king"):
+        publish_genesis(rt, king, block, local_models=local, check=True)
+        block += 1
+    req = DuelRequest(
+        challenger=challenger,
+        king=king,
+        size=args.size or "smoke",
+        local_models=local,
+        device=args.device,
+        record_video=not args.no_video,
+    )
+    try:
+        record = Orchestrator(rt).run(req, block)
+    except DuelFailed as exc:
+        print("smoke duel failed:", exc)
+        return 1
+    report = verify_store(store_root, spec)
+    for e in report.errors:
+        print("error:", e)
+    print(
+        json.dumps(
+            {
+                "event_id": record["event_id"],
+                "dethroned": record["dethroned"],
+                "king_scores": record["king_scores"],
+                "challenger_scores": record["challenger_scores"],
+                "wins": record["wins"],
+                "losses": record["losses"],
+                "ties": record["ties"],
+                "void": record["void"],
+                "media": record["media_count"],
+                "store_ok": report.ok,
+            },
+            indent=1,
+        )
+    )
+    return 0 if report.ok else 1
+
+
+def _add_runtime_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--store", required=True)
+    p.add_argument("--pool", required=True)
+    p.add_argument("--key", default="keys/validator.ed25519", help="validator.ed25519 secret file")
+    p.add_argument("--arch", default=None)
+    p.add_argument("--runs", default="runs")
+    p.add_argument("--live", default=None, help="dashboard base url for live frames")
+    p.add_argument("--live-token", default=None)
+    p.add_argument(
+        "--mirror", default=None, help="Hugging Face dataset repo to mirror the store to"
+    )
+    p.add_argument(
+        "--local-model", action="append", default=None, help="repo=/local/dir (offline models)"
+    )
+    p.add_argument(
+        "--docker-image", default=None, help="run model sides in this image with --network none"
+    )
+    p.add_argument("--device", default="cuda")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="icilval", description="ICIL competition validator")
     p.add_argument("--spec", help="path to spec.json (default: packaged / repo root)")
@@ -375,6 +664,84 @@ def build_parser() -> argparse.ArgumentParser:
     u.add_argument("--size", default=None)
     u.add_argument("--out", default=None)
     u.set_defaults(func=cmd_units)
+
+    c = sub.add_parser("convert-ckpt", help="BPP checkpoint -> model.safetensors + config.yaml")
+    c.add_argument("--ckpt", required=True)
+    c.add_argument("--out", required=True)
+    c.add_argument("--arch-name", default="bpp_libero_v1")
+    c.add_argument("--emit-arch", default=None, help="also write the arch templates into this dir")
+    c.set_defaults(func=cmd_convert)
+
+    f = sub.add_parser("fetch-model", help="download a submission's allow-listed files")
+    f.add_argument("ref", help="repo@revision")
+    f.add_argument("--dest", required=True)
+    f.set_defaults(func=cmd_fetch)
+
+    ck = sub.add_parser("check-model", help="fingerprint a model directory")
+    ck.add_argument("model")
+    ck.add_argument("--arch", default=None)
+    ck.set_defaults(func=cmd_check)
+
+    rd = sub.add_parser("render-demo", help="render a pool demonstration to mp4")
+    rd.add_argument("--pool", required=True)
+    rd.add_argument("--demo", required=True, help="demo id, e.g. libero_spatial/<task>/demo_00")
+    rd.add_argument("--out", required=True)
+    rd.set_defaults(func=cmd_render_demo)
+
+    rs = sub.add_parser(
+        "run-side", help="run one side over a unit list (inside the model container)"
+    )
+    rs.add_argument("--model", required=True)
+    rs.add_argument("--pool", required=True)
+    rs.add_argument("--arch", required=True)
+    rs.add_argument("--units", required=True)
+    rs.add_argument("--side", required=True, choices=["challenger", "king"])
+    rs.add_argument("--out", required=True)
+    rs.add_argument("--device", default="cuda")
+    rs.add_argument("--no-video", action="store_true")
+    rs.set_defaults(func=cmd_run_side)
+
+    d = sub.add_parser("duel", help="run and publish one duel")
+    _add_runtime_args(d)
+    d.add_argument("--challenger", required=True, help="repo@revision")
+    d.add_argument("--king", default=None, help="repo@revision (default: none)")
+    d.add_argument("--size", default=None)
+    d.add_argument("--block", type=int, default=1)
+    d.add_argument("--skip-model-check", action="store_true")
+    d.add_argument("--gpus", default="all")
+    d.add_argument("--no-video", action="store_true")
+    d.set_defaults(func=cmd_duel)
+
+    g = sub.add_parser("genesis", help="crown the opening entrant without a duel")
+    _add_runtime_args(g)
+    g.add_argument("--king", required=True, help="repo@revision")
+    g.add_argument("--block", type=int, default=1)
+    g.add_argument("--skip-model-check", action="store_true")
+    g.set_defaults(func=cmd_genesis)
+
+    dm = sub.add_parser("daemon", help="the validator loop")
+    _add_runtime_args(dm)
+    dm.add_argument("--queue", default="queue/queue.json")
+    dm.add_argument("--admin-token", default=None, help="also serve the submission intake")
+    dm.add_argument("--once", action="store_true")
+    dm.set_defaults(func=cmd_daemon)
+
+    sm = sub.add_parser(
+        "smoke", help="genesis + genesis-vs-genesis duel into a fresh store (in-process)"
+    )
+    _add_runtime_args(sm)
+    sm.set_defaults(key=None)
+    sm.add_argument("--model-dir", required=True, help="local converted model directory")
+    sm.add_argument("--repo", default="local/bpp-libero-genesis")
+    sm.add_argument("--revision", default="0000000000000000000000000000000000000001")
+    sm.add_argument(
+        "--same-model",
+        action="store_true",
+        help="challenger = a distinct ref to the same weights (copy-of-king case)",
+    )
+    sm.add_argument("--size", default="smoke")
+    sm.add_argument("--no-video", action="store_true")
+    sm.set_defaults(func=cmd_smoke)
 
     return p
 

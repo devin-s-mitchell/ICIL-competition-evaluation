@@ -1,0 +1,6 @@
+# LIBERO reads this at import time; without it it prompts on stdin and hangs.
+benchmark_root: /opt/bpp/deps/LIBERO/libero/libero
+bddl_files: /opt/bpp/deps/LIBERO/libero/libero/bddl_files
+init_states: /opt/bpp/deps/LIBERO/libero/libero/init_files
+datasets: /opt/bpp/behavior_prompting/train_network/datasets/libero
+assets: /opt/bpp/deps/LIBERO/libero/libero/assets

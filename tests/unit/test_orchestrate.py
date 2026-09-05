@@ -1,0 +1,120 @@
+import json
+
+from icilval.canon import Signer
+from icilval.duel.orchestrate import Orchestrator, Runtime
+from icilval.ids import ModelRef
+from icilval.live import LiveReporter
+from icilval.pools.schema import Pool
+from icilval.spec import AXES
+from icilval.store.records import unit_verdict_from_unit
+from icilval.store.writer import Store
+
+
+def make_rt(spec, tmp_path):
+    signer = Signer.generate()
+    store = Store(tmp_path / "store", spec, signer)
+    store.init(signer.verify_key_hex, None)
+    pool = Pool(
+        schema=1,
+        pool_version="t",
+        spec_version=1,
+        sources={},
+        tasks={},
+        variants={},
+        axes={a: {"eligible": []} for a in AXES},
+        root=tmp_path,
+    )
+    return Runtime(
+        spec=spec,
+        pool=pool,
+        store=store,
+        signer=signer,
+        arch_dir=tmp_path,
+        run_root=tmp_path / "runs",
+        live=LiveReporter(spec, None, None),
+    )
+
+
+def unit(axis, i):
+    return unit_verdict_from_unit(
+        {
+            "unit_id": f"{axis[:2]}-{i:03d}",
+            "axis": axis,
+            "index": i,
+            "task": "t",
+            "instance": i,
+            "seed": i,
+            "perturbation": {"kind": "x"},
+            "demo": "t/demo_00",
+        }
+    )
+
+
+def test_merge_and_media_flush(spec, tmp_path):
+    rt = make_rt(spec, tmp_path)
+    orch = Orchestrator(rt)
+    state = {
+        "units": [unit("spatial", 0), unit("object", 1)],
+        "media_done": {},
+        "recent_media": None,
+        "event_id": "e" * 64,
+        "kind": "duel",
+        "size": "smoke",
+        "king": None,
+        "challenger": ModelRef.make("a/b", "1" * 40),
+        "phase": "evaluating",
+        "started_at": "2026-01-01T00:00:00Z",
+    }
+    orch._merge(
+        state,
+        "king",
+        {
+            "unit_id": "sp-000",
+            "success": True,
+            "progress": 1.0,
+            "steps": 50,
+            "prompt_steps": 100,
+            "prompt_chunks": 5,
+        },
+    )
+    orch._merge(
+        state, "challenger", {"unit_id": "sp-000", "success": False, "progress": 0.0, "steps": 400}
+    )
+    u = state["units"][0]
+    assert (
+        u["king_success"] is True
+        and u["challenger_success"] is False
+        and u["outcome"] == "king"
+        and u["prompt"]["chunks"] == 5
+    )
+    orch._merge(state, "king", {"unit_id": "ob-001", "void": True, "error": "boom"})
+    assert state["units"][1]["void"] and state["units"][1]["king_error"] == "boom"
+
+    side_dir = tmp_path / "runs" / "king"
+    (side_dir / "media").mkdir(parents=True)
+    clip = side_dir / "media" / "sp-000.mp4"
+    clip.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"y" * 50)
+    from icilval.canon import sha256_file
+
+    (side_dir / "units.jsonl").write_text(
+        json.dumps(
+            {
+                "unit_id": "sp-000",
+                "success": True,
+                "video": "media/sp-000.mp4",
+                "video_sha256": sha256_file(clip),
+            }
+        )
+        + "\n"
+    )
+    orch._flush_media(state, "king", side_dir)  # below the flush threshold: nothing copied yet
+    assert not state["media_done"]
+    orch._flush_media(state, "king", side_dir, force=True)
+    sha = state["media_done"][("king", "sp-000")]
+    assert rt.store.has_media(sha, "mp4") and state["units"][0]["king_video"] == sha
+    assert state["recent_media"]["side"] == "king" and state["recent_media"]["video"] == sha
+    frame = orch._frame(state)
+    assert frame["units"][0]["king_video"] == sha and frame["axis_progress"]["king"]["spatial"] == {
+        "done": 1,
+        "total": 1,
+    }
