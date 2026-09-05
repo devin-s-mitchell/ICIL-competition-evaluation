@@ -17,3 +17,4 @@ build/
 *.ckpt
 *.safetensors
 .env
+MUJOCO_LOG.TXT
