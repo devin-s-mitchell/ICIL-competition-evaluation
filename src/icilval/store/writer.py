@@ -15,9 +15,11 @@ final line, which the dashboard tolerates.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import shutil
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +27,22 @@ from ..canon import Signer, canonical_json, sha256_file
 from ..spec import Spec
 
 SHA_LEN = 64
+
+
+@contextmanager
+def store_lock(root: str | Path):
+    """One writer per store. Publishing commands and the daemon take this; a second writer fails fast."""
+    path = Path(root) / ".validator.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            raise RuntimeError(f"another validator is publishing to {root} (holds {path})") from exc
+        yield
+    finally:
+        os.close(fd)
 
 
 def atomic_write_text(path: Path, text: str) -> None:

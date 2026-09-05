@@ -404,8 +404,11 @@ def cmd_duel(args) -> int:
         device=args.device,
         record_video=not args.no_video,
     )
+    from .store.writer import store_lock
+
     try:
-        record = Orchestrator(rt).run(req, args.block)
+        with store_lock(args.store):
+            record = Orchestrator(rt).run(req, args.block)
     except DuelFailed as exc:
         print("duel failed:", exc)
         return 1

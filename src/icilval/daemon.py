@@ -46,7 +46,9 @@ class Daemon:
         try:
             fcntl.flock(self._lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:
-            raise RuntimeError(f"another validator holds {path}") from exc
+            raise RuntimeError(
+                f"another validator is publishing to {self.cfg.store_root} (holds {path})"
+            ) from exc
 
     def current_king(self) -> ModelRef | None:
         head = self.rt.store.head(self.rt.spec.track_id)

@@ -133,3 +133,16 @@ def test_media_and_torn_line(spec, tmp_path):
     # missing media is an error
     store.media_path(sha, "mp4").unlink()
     assert any("media" in e for e in verify_store(tmp_path / "store", sp).errors)
+
+
+def test_store_lock_is_exclusive(tmp_path):
+    import pytest
+
+    from icilval.store.writer import store_lock
+
+    with store_lock(tmp_path / "s"):
+        with pytest.raises(RuntimeError):
+            with store_lock(tmp_path / "s"):
+                pass
+    with store_lock(tmp_path / "s"):
+        pass
