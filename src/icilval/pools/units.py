@@ -73,8 +73,10 @@ def derive_units(pool: Pool, spec: Spec, duel: str, size: str | None = None) -> 
             raise ValueError(f"pool has no eligible entries for axis {axis}")
         for index, entry in enumerate(_spread(per_axis, entries, rng)):
             task, variant = pool.resolve(axis, entry)
-            n_init = variant.n_init if variant else task.n_init
-            instance = rng.below(n_init)
+            valid = (variant or task).valid_instances
+            if not valid:
+                raise ValueError(f"{entry} has no valid initial states")
+            instance = valid[rng.below(len(valid))]
             candidates = [d for d in task.demos if task.demo_init_index.get(d) != instance] or list(
                 task.demos
             )

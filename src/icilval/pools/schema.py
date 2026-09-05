@@ -34,6 +34,11 @@ class PoolTask:
     demo_init_index: dict[str, int | None] = field(default_factory=dict)
     provenance: dict[str, Any] = field(default_factory=dict)
     perturbation: dict[str, Any] = field(default_factory=dict)
+    instances: list[int] | None = None
+
+    @property
+    def valid_instances(self) -> list[int]:
+        return list(self.instances) if self.instances is not None else list(range(self.n_init))
 
     @property
     def label(self) -> str:
@@ -51,6 +56,11 @@ class PoolVariant:
     init: str
     n_init: int
     validated: bool = True
+    instances: list[int] | None = None
+
+    @property
+    def valid_instances(self) -> list[int]:
+        return list(self.instances) if self.instances is not None else list(range(self.n_init))
 
 
 @dataclass

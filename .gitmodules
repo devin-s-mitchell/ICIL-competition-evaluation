@@ -1,0 +1,3 @@
+[submodule "vendor/behavior_prompting"]
+	path = vendor/behavior_prompting
+	url = https://github.com/real-stanford/behavior_prompting
