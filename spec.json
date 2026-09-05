@@ -124,7 +124,7 @@
     }
   },
   "pools": {
-    "repo": "robofluent/icil-competition-pools",
+    "repo": "robotensor/icil-competition-pools",
     "version": "2026.09-v1",
     "pool_id": "7bf31989bda4b4147faf68d26f7102fc581e39c73ccd1101c467cc328847d259",
     "demos_per_task": 10,
