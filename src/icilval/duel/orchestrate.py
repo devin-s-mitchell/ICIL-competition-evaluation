@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
 import threading
@@ -206,6 +207,11 @@ class Orchestrator:
             req.gpus,
             "--shm-size",
             "2g",
+            # run as the host user so the side directory stays writable and its files stay ours
+            "--user",
+            f"{os.getuid()}:{os.getgid()}",
+            "-e",
+            "HOME=/tmp",
             "-v",
             f"{model_dir.resolve()}:/model:ro",
             "-v",
@@ -213,7 +219,7 @@ class Orchestrator:
             "-v",
             f"{self.rt.arch_dir.resolve()}:/arch:ro",
             "-v",
-            f"{side_dir.resolve()}:/run:rw",
+            f"{side_dir.resolve()}:/work:rw",
             req.docker_image,
             "icilval",
             "run-side",
@@ -224,11 +230,11 @@ class Orchestrator:
             "--arch",
             "/arch",
             "--units",
-            "/run/units.json",
+            "/work/units.json",
             "--side",
             side,
             "--out",
-            "/run",
+            "/work",
         ]
         log.info("docker: %s", " ".join(cmd))
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)

@@ -21,7 +21,7 @@ RUN HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 python -c "import timm; timm.create_
 COPY docker/libero_config.yaml /etc/libero/config.yaml
 COPY dist/*.whl /tmp/
 RUN pip install --no-deps /tmp/*.whl && pip install "pynacl>=1.5" "safetensors>=0.4" "imageio-ffmpeg>=0.5" "huggingface_hub>=0.25" && rm /tmp/*.whl
-RUN useradd -m -u 1000 runner && mkdir -p /model /pool /arch /run && chown -R runner /run
+RUN useradd -m -u 1000 runner && mkdir -p /model /pool /arch /work && chmod 777 /work /tmp
 USER runner
 COPY --chown=runner docker/entrypoint.sh /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
