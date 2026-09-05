@@ -22,3 +22,11 @@ icilval store verify /tmp/store
 
 Genesis: convert the public checkpoint, publish it as `spec.baseline.repo`, pin the revision,
 then `icilval genesis --king <repo>@<revision> …` (or simply queue it on an empty throne).
+
+## Container mode and filesystems
+
+Model sides run as `docker run --network none --gpus all` with the model, pool, arch templates and
+the side's run directory bind-mounted. Docker cannot bind-mount from FUSE filesystems (an encrypted
+home such as gocryptfs fails with "change mount propagation … no such file or directory"), so on such
+hosts keep `--runs`, `--pool`, `--arch` and any `--local-model` directories on a regular filesystem,
+for example under `/var/lib/icilval`. The store and queue can live anywhere.
