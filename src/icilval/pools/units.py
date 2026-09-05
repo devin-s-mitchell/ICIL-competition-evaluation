@@ -15,6 +15,7 @@ from typing import Any
 from ..ids import unit_id, unit_seed
 from ..rng import HashRng
 from ..sim.lighting import sample_lighting
+from ..sim.perturb_math import direction_delta
 from ..spec import AXES, Spec
 from .schema import Pool
 
@@ -76,7 +77,11 @@ def derive_units(pool: Pool, spec: Spec, duel: str, size: str | None = None) -> 
             valid = (variant or task).valid_instances
             if not valid:
                 raise ValueError(f"{entry} has no valid initial states")
-            instance = valid[rng.below(len(valid))]
+            slot = valid[rng.below(len(valid))]
+            directions = int(variant.params.get("directions", 0)) if variant else 0
+            instance, direction = (
+                (slot // directions, slot % directions) if directions else (slot, None)
+            )
             candidates = [d for d in task.demos if task.demo_init_index.get(d) != instance] or list(
                 task.demos
             )
@@ -87,6 +92,15 @@ def derive_units(pool: Pool, spec: Spec, duel: str, size: str | None = None) -> 
             perturbation: dict[str, Any] = dict(task.perturbation)
             if variant:
                 perturbation = {"kind": variant.kind, **variant.params}
+                if direction is not None:
+                    perturbation["direction_index"] = direction
+                    perturbation["delta_xy"] = direction_delta(
+                        direction, directions, float(variant.params["radius_m"])
+                    )
+                    perturbation["yaw"] = round(
+                        rng.uniform(-1, 1) * float(variant.params.get("yaw_max_rad", 0.0)), 4
+                    )
+                    perturbation.pop("directions", None)
             if axis == "environment":
                 lighting = sample_lighting(
                     HashRng(duel, axis, index, "lighting"), spec.axis("environment")["lighting"]

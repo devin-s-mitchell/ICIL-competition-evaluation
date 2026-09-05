@@ -136,6 +136,139 @@ def cmd_units(args) -> int:
     return 0
 
 
+def cmd_pools(args) -> int:
+    import logging
+
+    from .pools.build import (
+        finalize,
+        open_pool,
+        stage_base,
+        stage_composition,
+        stage_environment,
+        stage_object,
+        stage_spatial,
+        summary,
+        verify_pool,
+    )
+    from .pools.schema import Pool
+    from .pools.sources import Sources
+    from .spec import _repo_root
+
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    spec = _spec(args)
+    if args.pools_cmd == "build":
+        out = Path(args.out)
+        src = Sources.default(_repo_root() or Path.cwd())
+        if args.libero_root:
+            src.libero_root = Path(args.libero_root)
+        if args.raw:
+            raw = Path(args.raw)
+            src.libero_datasets, src.libero_pro = raw / "libero_datasets", raw / "libero_pro"
+            src.gen_goal_chain, src.gen_spatial_combination = (
+                raw / "libero_gen_goal_chain",
+                raw / "libero_gen_spatial_combination",
+            )
+        missing = src.check()
+        if missing:
+            print("missing sources:", *missing, sep="\n  ")
+            return 1
+        pool = open_pool(out, spec, args.version or str(spec.pools["version"]))
+        stages = args.stage or [
+            "base",
+            "spatial",
+            "environment",
+            "object",
+            "composition",
+            "finalize",
+        ]
+        suites = tuple(args.suites) if args.suites else None
+        kw = {"limit": args.limit, "validate": not args.no_validate}
+        for stage in stages:
+            if stage == "base":
+                stage_base(
+                    pool, spec, src, **({"suites": suites} if suites else {}), limit=args.limit
+                )
+            elif stage == "spatial":
+                stage_spatial(pool, spec, src, **({"suites": suites} if suites else {}), **kw)
+            elif stage == "environment":
+                stage_environment(pool, spec, src, **({"suites": suites} if suites else {}), **kw)
+            elif stage == "object":
+                stage_object(pool, spec, src, **kw)
+            elif stage == "composition":
+                stage_composition(pool, spec, src, **kw)
+            elif stage == "finalize":
+                print("eligible:", finalize(pool, spec))
+            else:
+                print("unknown stage", stage)
+                return 2
+        pool.save()
+        print(json.dumps(summary(pool), indent=1))
+        return 0
+    if args.pools_cmd == "verify":
+        errors = verify_pool(Path(args.pool))
+        for e in errors:
+            print("error:", e)
+        print(json.dumps(summary(Pool.load(args.pool)), indent=1))
+        return 0 if not errors else 1
+    if args.pools_cmd == "push":
+        from .pools.hub import push_pool
+
+        pool = Pool.load(args.pool)
+        print(push_pool(Path(args.pool), args.repo or str(spec.pools["repo"]), pool.pool_version))
+        return 0
+    if args.pools_cmd == "pull":
+        from .pools.hub import pull_pool
+
+        print(
+            pull_pool(
+                args.repo or str(spec.pools["repo"]),
+                args.version or str(spec.pools["version"]),
+                Path(args.dest),
+                revision=args.revision,
+            )
+        )
+        return 0
+    if args.pools_cmd == "generate":
+        from .pools.build_gen import generate, import_generated
+        from .spec import _repo_root as rr
+
+        root = rr() or Path.cwd()
+        bpp = Path(args.bpp_root) if args.bpp_root else root / "vendor" / "behavior_prompting"
+        views = [f"libero_goal_{v}_view" for v in ("icil_object", "icil_chain")]
+        run_dir = Path(args.run_dir)
+        if not args.import_only:
+            generate(
+                bpp,
+                root / "affordance.yaml",
+                splits=["libero_goal"],
+                views=views,
+                suffix=args.suffix,
+                run_dir=run_dir,
+                n_demos=args.n_demos,
+                workers=args.workers,
+                python=args.python,
+                dry_run=args.dry_run,
+            )
+        if args.pool and not args.dry_run:
+            pool = Pool.load(args.pool)
+            pool.pool_id = None
+            got = import_generated(
+                pool,
+                spec,
+                run_dir,
+                views,
+                axis_for_view={views[0]: "object", views[1]: "composition"},
+                max_steps={"object": 400, "composition": 800},
+                validate=not args.no_validate,
+            )
+            print("imported", got)
+            print("eligible:", finalize(pool, spec))
+        return 0
+    return 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="icilval", description="ICIL competition validator")
     p.add_argument("--spec", help="path to spec.json (default: packaged / repo root)")
@@ -188,6 +321,51 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--bind", default=None)
     a.add_argument("--port", type=int, default=None)
     a.set_defaults(func=cmd_admin)
+
+    po = sub.add_parser("pools", help="build, verify and distribute evaluation pools")
+    po_sub = po.add_subparsers(dest="pools_cmd", required=True)
+    po_b = po_sub.add_parser("build")
+    po_b.add_argument("--out", required=True)
+    po_b.add_argument(
+        "--stage",
+        nargs="*",
+        default=None,
+        help="base spatial environment object composition finalize",
+    )
+    po_b.add_argument("--suites", nargs="*", default=None)
+    po_b.add_argument(
+        "--limit", type=int, default=None, help="tasks per suite/split (smoke builds)"
+    )
+    po_b.add_argument(
+        "--no-validate", action="store_true", help="skip simulator validation (no instance lists)"
+    )
+    po_b.add_argument("--raw", default=None, help="raw cache dir (default ~/.cache/icilval/raw)")
+    po_b.add_argument("--libero-root", default=None)
+    po_b.add_argument("--version", default=None)
+    po_v = po_sub.add_parser("verify")
+    po_v.add_argument("pool")
+    po_p = po_sub.add_parser("push")
+    po_p.add_argument("pool")
+    po_p.add_argument("--repo", default=None)
+    po_l = po_sub.add_parser("pull")
+    po_l.add_argument("--dest", required=True)
+    po_l.add_argument("--repo", default=None)
+    po_l.add_argument("--version", default=None)
+    po_l.add_argument("--revision", default=None)
+    po_g = po_sub.add_parser(
+        "generate", help="run BPP's LIBERO-Gen scripts with affordance.yaml, then import"
+    )
+    po_g.add_argument("--run-dir", required=True)
+    po_g.add_argument("--pool", default=None)
+    po_g.add_argument("--suffix", default="icil")
+    po_g.add_argument("--n-demos", type=int, default=12)
+    po_g.add_argument("--workers", type=int, default=8)
+    po_g.add_argument("--python", default="python")
+    po_g.add_argument("--bpp-root", default=None)
+    po_g.add_argument("--dry-run", action="store_true")
+    po_g.add_argument("--import-only", action="store_true")
+    po_g.add_argument("--no-validate", action="store_true")
+    po.set_defaults(func=cmd_pools)
 
     u = sub.add_parser("units", help="derive a duel's unit list")
     u.add_argument("units_cmd", choices=["derive"])
