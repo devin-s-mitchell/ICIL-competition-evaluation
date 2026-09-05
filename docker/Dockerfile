@@ -6,7 +6,8 @@ ENV DEBIAN_FRONTEND=noninteractive MAMBA_ROOT_PREFIX=/opt/micromamba PATH=/opt/m
     MUJOCO_GL=egl PYOPENGL_PLATFORM=egl HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false \
     LIBERO_CONFIG_PATH=/etc/libero HF_HOME=/opt/hf
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl ca-certificates git bzip2 libegl1 libgl1 libglib2.0-0 libosmesa6 libglew-dev libxrender1 libxext6 libsm6 patchelf \
+      curl ca-certificates git bzip2 build-essential cmake linux-libc-dev \
+      libegl1 libegl1-mesa-dev libgl1 libgl1-mesa-dev libglvnd-dev libglib2.0-0 libosmesa6 libglew-dev libxrender1 libxext6 libsm6 patchelf \
     && rm -rf /var/lib/apt/lists/* \
     && curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C /usr/local bin/micromamba \
     && /usr/local/bin/micromamba --version
