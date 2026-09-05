@@ -16,8 +16,8 @@ WORKDIR /opt/bpp
 RUN /usr/local/bin/micromamba create -y -n bp -f environment.yml \
     && /usr/local/bin/micromamba clean -a -y
 # CLIP backbone weights for construction (overwritten by the submission's weights at load)
-RUN python -c "import timm; timm.create_model('vit_base_patch16_clip_224.openai', pretrained=True, global_pool='', num_classes=0)" \
-    && python -c "from huggingface_hub import snapshot_download; snapshot_download('timm/vit_base_patch16_clip_224.openai')" || true
+RUN HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 python -c "import timm; timm.create_model('vit_base_patch16_clip_224.openai', pretrained=True, global_pool='', num_classes=0); print('clip cached')" \
+    && chmod -R a+rX /opt/hf
 COPY docker/libero_config.yaml /etc/libero/config.yaml
 COPY dist/*.whl /tmp/
 RUN pip install --no-deps /tmp/*.whl && pip install "pynacl>=1.5" "safetensors>=0.4" "imageio-ffmpeg>=0.5" "huggingface_hub>=0.25" && rm /tmp/*.whl
