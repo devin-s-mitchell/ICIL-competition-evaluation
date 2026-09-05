@@ -21,6 +21,18 @@ class Infeasible(Exception):
     """The perturbation left the scene in a state that must not be scored."""
 
 
+def table_bounds(env: LiberoEnv, margin_m: float = 0.04) -> tuple[np.ndarray, np.ndarray] | None:
+    """(xy_min, xy_max) of the nominal table top in world coordinates, shrunk by a margin."""
+    raw = env.raw
+    size = next((getattr(raw, a) for a in dir(raw) if a.endswith("table_full_size")), None)
+    offset = next((getattr(raw, a) for a in dir(raw) if a.endswith("table_offset")), None)
+    if size is None or offset is None:
+        return None
+    half = np.asarray(size[:2], dtype=np.float64) / 2.0 - margin_m
+    center = np.asarray(offset[:2], dtype=np.float64)
+    return center - half, center + half
+
+
 def displace_objects(
     env: LiberoEnv,
     moves: dict[str, dict[str, Any]],
@@ -32,6 +44,11 @@ def displace_objects(
     """moves: {object: {delta_xy: [dx, dy], yaw: rad}}. Raises Infeasible if an object fell or barely moved."""
     sim = env.sim
     before = {name: env.object_position(name).copy() for name in moves}
+    bounds = table_bounds(env)
+    for name, mv in moves.items():
+        target = before[name][:2] + np.asarray(mv["delta_xy"], dtype=np.float64)
+        if bounds is not None and (np.any(target < bounds[0]) or np.any(target > bounds[1])):
+            raise Infeasible(f"{name} would leave the table at {target.round(3).tolist()}")
     for name, mv in moves.items():
         joint = env.object_joint(name)
         qpos = np.array(sim.data.get_joint_qpos(joint), dtype=np.float64).reshape(-1)
