@@ -8,8 +8,8 @@ ENV DEBIAN_FRONTEND=noninteractive MAMBA_ROOT_PREFIX=/opt/micromamba PATH=/opt/m
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates git bzip2 libegl1 libgl1 libglib2.0-0 libosmesa6 libglew-dev libxrender1 libxext6 libsm6 patchelf \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj -C /usr/local bin/micromamba \
-    && mv /usr/local/bin/micromamba /opt/micromamba-bin || true
+    && curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C /usr/local bin/micromamba \
+    && /usr/local/bin/micromamba --version
 COPY vendor/behavior_prompting /opt/bpp
 WORKDIR /opt/bpp
 RUN /usr/local/bin/micromamba create -y -n bp -f environment.yml \

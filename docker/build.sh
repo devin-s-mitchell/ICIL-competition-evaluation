@@ -3,6 +3,6 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 TAG=${1:-icilval/model:dev}
-rm -rf dist && python -m pip wheel --no-deps -w dist . >/dev/null
+rm -rf dist && (uv build --wheel --out-dir dist >/dev/null 2>&1 || python -m pip wheel --no-deps -w dist . >/dev/null)
 docker build -f docker/Dockerfile -t "$TAG" .
 echo "built $TAG"
