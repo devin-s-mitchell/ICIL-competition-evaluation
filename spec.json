@@ -1,0 +1,170 @@
+{
+  "spec_version": 1,
+  "_comment": "Normative constants for the RoboTensor one-demonstration in-context imitation learning competition. The validator and the dashboard both read this file; nothing in it may be duplicated as a literal in code. spec_fingerprint = sha256 of the canonical JSON of this file. Changing spec_version changes every derived duel_id and therefore every draw; bump it only deliberately.",
+
+  "track": {
+    "id": "icil_1demo",
+    "title": "One-demo in-context imitation",
+    "k_demos": 1,
+    "language": "none",
+    "_comment": "The model is shown exactly one demonstration of the task and no language. The demonstration is the whole prompt."
+  },
+
+  "environment": {
+    "behavior_prompting_commit": "ec29e62dde999ac3423df7d99a773c1dd28b480e",
+    "libero_commit": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+    "mujoco": "3.3.0",
+    "robosuite": "1.4.0",
+    "controller": "OSC_POSE",
+    "control_delta": true,
+    "control_freq": 20,
+    "cameras": ["agentview", "robot0_eye_in_hand"],
+    "camera_resolution": 128,
+    "policy_image_resolution": 224,
+    "action_dim": 7,
+    "obs_history": 2,
+    "action_horizon": 16,
+    "exec_horizon": 12,
+    "warmup_open_gripper_steps": 12,
+    "prompt_actions_per_chunk": 20
+  },
+
+  "axes": {
+    "spatial": {
+      "title": "Spatial change",
+      "blurb": "Same task as the demonstration, but the objects and the robot start somewhere else. Positions come from LIBERO-PRO's swap and pose perturbations plus an explicit displacement ladder.",
+      "max_steps": 400,
+      "variant_kinds": ["pro_swap", "pro_pose", "level"],
+      "levels": {
+        "L1": { "radius_m": 0.05, "min_delta_m": 0.03 },
+        "L2": { "radius_m": 0.10, "min_delta_m": 0.06 },
+        "L3": { "radius_m": 0.15, "min_delta_m": 0.10 },
+        "L4": { "radius_m": 0.20, "min_delta_m": 0.14, "all_objects": true },
+        "L5": { "radius_m": 0.25, "min_delta_m": 0.18, "all_objects": true }
+      },
+      "yaw_max_rad": 0.7853981633974483,
+      "robot_init_noise": 0.02
+    },
+    "environment": {
+      "title": "Environment change",
+      "blurb": "Same task and layout, but the lighting or the scene changes: a different table, floor or wall, and randomized lights.",
+      "max_steps": 400,
+      "variant_kinds": ["table", "style", "lighting"],
+      "tables": ["kitchen_table", "living_room_table", "study_table"],
+      "lighting": {
+        "diffuse_scale": [0.3, 1.5],
+        "ambient_add": [0.0, 0.35],
+        "specular_scale": [0.0, 1.5],
+        "pos_jitter_m": 1.0,
+        "dir_jitter_rad": 0.5,
+        "headlight_scale": [0.4, 1.2],
+        "light_drop_prob": 0.25
+      }
+    },
+    "object": {
+      "title": "Object change",
+      "blurb": "Same kind of task, but the target object is swapped for another object that affords the same operation. The demonstration shows the new pairing; the pairing was never published as training data.",
+      "max_steps": 550,
+      "source_splits": ["generated", "libero_goal_chain_secondstep_view", "libero_spatial_selected_combinations_view"]
+    },
+    "composition": {
+      "title": "Composition",
+      "blurb": "Two single-step tasks done one after the other. The demonstration is one continuous recording of both steps; success means both goals hold at the end.",
+      "max_steps": 800,
+      "source_splits": ["generated", "libero_goal_chain_selected_view", "libero_goal_chain_selected_inverse_view"],
+      "progress_diagnostic": true
+    }
+  },
+
+  "pools": {
+    "repo": "robofluent/icil-competition-pools",
+    "version": "2026.09-v1",
+    "pool_id": null,
+    "demos_per_task": 10,
+    "init_states_per_task": 50,
+    "_comment": "pool_id is filled by `icilval pools build` and must equal pool.json's id; the validator refuses to run on a mismatch."
+  },
+
+  "duel": {
+    "default_size": "heavy",
+    "sizes": {
+      "smoke":  { "units_per_axis": 2 },
+      "light":  { "units_per_axis": 5 },
+      "medium": { "units_per_axis": 10 },
+      "heavy":  { "units_per_axis": 20 }
+    },
+    "score_margin": 3.0,
+    "max_void_fraction": 0.1,
+    "_crown_comment": "Both sides run the identical unit list (same tasks, initial states, prompt demonstrations and seeds). Per-axis success rate is stored as a fraction in [0, 1]; the final score is the mean of the four axes. The challenger takes the crown iff challenger.average >= king.average + score_margin / 100. Paired per-unit outcomes are published as a diagnostic and never decide the crown.",
+    "derivation": {
+      "duel_id": "sha256(spec_version|track|challenger.key|challenger.revision|king.key|king.revision)",
+      "unit_seed": "int(sha256(duel_id|axis|index)[:8], 16)",
+      "prompt_instance_disjoint": true
+    }
+  },
+
+  "budgets": {
+    "act_soft_timeout_s": 1.0,
+    "act_hard_timeout_s": 30.0,
+    "max_model_errors_per_episode": 3,
+    "unit_wall_seconds": 300,
+    "side_wall_seconds": 10800,
+    "duel_wall_seconds": 28800,
+    "model_load_seconds": 600
+  },
+
+  "model": {
+    "architecture": "bpp_libero_v1",
+    "required_files": ["model.safetensors", "config.yaml"],
+    "max_params": 260000000,
+    "max_repo_bytes": 2147483648,
+    "allowed_extensions": [".safetensors", ".yaml", ".yml", ".json", ".md", ".txt"],
+    "allowed_dtypes": ["F32", "BF16", "F16"],
+    "mutable_keys": ["name"],
+    "_comment": "A submission is a Hugging Face model repo holding model.safetensors and config.yaml. The validator instantiates the architecture from its own allow-listed template (arch/bpp_libero_v1.cfg.json), diffs the submitted config against it, checks the safetensors header against arch/bpp_libero_v1.tensors.json, and loads weights strictly. No pickle is ever read and no entrant code runs."
+  },
+
+  "baseline": {
+    "repo": "robofluent/bpp-libero-genesis",
+    "revision": null,
+    "label": "BPP public checkpoint (austinpatel/libero, converted)",
+    "_comment": "The genesis king. revision is pinned when the converted checkpoint is published."
+  },
+
+  "media": {
+    "video": {
+      "format": "mp4",
+      "codec": "libx264",
+      "pix_fmt": "yuv420p",
+      "crf": 20,
+      "preset": "veryfast",
+      "faststart": true,
+      "fps": 20,
+      "resolution": 256,
+      "camera": "agentview",
+      "scope": "all"
+    },
+    "demo_video": true
+  },
+
+  "store": {
+    "schema": 1,
+    "index_lines_per_part": 1000,
+    "media_bucket_hex": 2,
+    "_layout_comment": "manifest.json; tracks/{track}/{head.json,queue.json,index-NNNN.jsonl}; events/{track}/{event_id}.json; media/{sha[:2]}/{sha}.mp4. Index lines are '<canonical_json>\\t<ed25519_signature_hex>', append-only."
+  },
+
+  "live": {
+    "schema": 1,
+    "path": "/api/live",
+    "media_flush_units": 4,
+    "max_frame_bytes": 524288,
+    "min_interval_s": 1.0
+  },
+
+  "admin": {
+    "bind": "127.0.0.1",
+    "port": 8799,
+    "max_body_bytes": 8192
+  }
+}

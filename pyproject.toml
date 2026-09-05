@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "icilval"
+version = "0.1.0.dev0"
+description = "Validator for the RoboTensor one-demonstration in-context imitation learning competition."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "PyYAML>=6.0",
+  "pynacl>=1.5",
+  "huggingface_hub>=0.25",
+  "safetensors>=0.4",
+]
+
+[project.optional-dependencies]
+sim = ["imageio-ffmpeg>=0.5", "h5py>=3.8"]
+convert = ["dill>=0.3.7", "hydra-core>=1.2", "omegaconf>=2.2"]
+schema = ["jsonschema>=4.20"]
+dev = ["pytest>=8", "pytest-cov", "ruff>=0.6", "jsonschema>=4.20", "h5py>=3.8", "imageio-ffmpeg>=0.5"]
+
+[project.scripts]
+icilval = "icilval.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/icilval"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"spec.json" = "icilval/data/spec.json"
+"store-schema.json" = "icilval/data/store-schema.json"
+"affordance.yaml" = "icilval/data/affordance.yaml"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "sim: needs the LIBERO simulator (bp conda env)",
+  "gpu: needs a CUDA GPU and the BPP checkpoint",
+  "container: needs docker",
+  "slow: takes minutes",
+]
