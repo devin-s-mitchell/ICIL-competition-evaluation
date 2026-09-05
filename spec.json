@@ -194,8 +194,8 @@
     "_mutable_comment": "Dotted paths under `model` that may differ from the template without affecting inference. Training-only keys are overwritten by the converter, so they never differ."
   },
   "baseline": {
-    "repo": "robofluent/bpp-libero-genesis",
-    "revision": null,
+    "repo": "robotensor/bpp-libero-genesis",
+    "revision": "478bbecdfd0ce3d66d49933319e7e9f2e874c9bd",
     "label": "BPP public checkpoint (austinpatel/libero, converted)",
     "_comment": "The genesis king. revision is pinned when the converted checkpoint is published."
   },
