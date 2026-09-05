@@ -151,9 +151,12 @@ class LiberoEnv:
         return joints[0]
 
     def object_position(self, name: str) -> np.ndarray:
-        return np.asarray(
-            self.env.sim.data.get_joint_qpos(self.object_joint(name))[:3], dtype=np.float64
-        )
+        qpos = np.asarray(
+            self.env.sim.data.get_joint_qpos(self.object_joint(name)), dtype=np.float64
+        ).reshape(-1)
+        if qpos.shape != (7,):
+            raise ValueError(f"{name} is not a free-joint object")
+        return qpos[:3]
 
     def forward(self) -> None:
         self.env.sim.forward()
