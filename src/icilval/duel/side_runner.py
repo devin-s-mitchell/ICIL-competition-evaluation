@@ -17,7 +17,7 @@ from ..model.bpp import BPPPolicy
 from ..pools.demos import load_demo
 from ..pools.schema import Pool
 from ..sim.episode import run_episode
-from ..sim.libero_env import LiberoEnv, load_init_states
+from ..sim.libero_env import LiberoEnv, load_init_states, scene_properties_of
 from ..sim.video import VideoWriter
 from ..spec import Spec
 
@@ -76,11 +76,18 @@ def run_side(
     }
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     env: LiberoEnv | None = None
-    env_bddl: str | None = None
+    env_key: tuple[str, str] | None = None
     init_cache: dict[str, np.ndarray] = {}
     try:
         # keep env switches rare: run units grouped by scene, in unit order within a group
-        order = sorted(range(len(units)), key=lambda i: (units[i]["bddl"], i))
+        order = sorted(
+            range(len(units)),
+            key=lambda i: (
+                units[i]["bddl"],
+                json.dumps(scene_properties_of(units[i]), sort_keys=True),
+                i,
+            ),
+        )
         for i in order:
             unit = units[i]
             if unit["unit_id"] in done:
@@ -95,11 +102,14 @@ def run_side(
                 _append(results_path, rec)
                 summary["void"] += 1
                 continue
-            if env is None or env_bddl != unit["bddl"]:
+            key = (unit["bddl"], json.dumps(scene_properties_of(unit), sort_keys=True))
+            if env is None or env_key != key:
                 if env is not None:
                     env.close()
-                env = LiberoEnv(pool.path(unit["bddl"]), spec)
-                env_bddl = unit["bddl"]
+                env = LiberoEnv(
+                    pool.path(unit["bddl"]), spec, scene_properties=scene_properties_of(unit)
+                )
+                env_key = key
             if unit["init"] not in init_cache:
                 init_cache[unit["init"]] = load_init_states(pool.path(unit["init"]))
             states = init_cache[unit["init"]]

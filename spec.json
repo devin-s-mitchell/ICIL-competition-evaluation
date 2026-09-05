@@ -68,11 +68,10 @@
     },
     "environment": {
       "title": "Environment change",
-      "blurb": "Same task and layout, but the lighting or the scene changes: a different table, floor or wall, and randomized lights.",
+      "blurb": "Same task and layout, but the scene sits on a different table in a different room, and the lights are randomized.",
       "max_steps": 550,
       "variant_kinds": [
         "table",
-        "style",
         "lighting"
       ],
       "tables": [

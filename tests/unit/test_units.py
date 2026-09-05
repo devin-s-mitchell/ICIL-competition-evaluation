@@ -113,3 +113,21 @@ def test_units_prompt_disjoint_and_perturbation(spec):
             assert u.perturbation["kind"] == "object_swap" and u.variant is None
         if u.axis == "composition":
             assert u.perturbation["kind"] == "chain"
+
+
+def test_instances_roundtrip(tmp_path):
+    pool = make_pool()
+    vid = next(iter(pool.variants))
+    pool.variants[vid].instances = [0, 2, 4]
+    tid = next(iter(pool.tasks))
+    pool.tasks[tid].instances = [1]
+    pool.seal()
+    pool.save(tmp_path)
+    again = Pool.load(tmp_path)
+    assert again.variants[vid].instances == [0, 2, 4] and again.variants[vid].valid_instances == [
+        0,
+        2,
+        4,
+    ]
+    assert again.tasks[tid].instances == [1]
+    assert again.pool_id == pool.pool_id

@@ -116,6 +116,7 @@ class Pool:
                 "max_steps": t.max_steps,
                 "provenance": t.provenance,
                 "perturbation": t.perturbation,
+                "instances": t.instances,
             }
 
         def variant_dict(v: PoolVariant) -> dict[str, Any]:
@@ -128,6 +129,7 @@ class Pool:
                 "init": v.init,
                 "n_init": v.n_init,
                 "validated": v.validated,
+                "instances": v.instances,
             }
 
         d: dict[str, Any] = {

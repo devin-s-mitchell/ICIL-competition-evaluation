@@ -1,0 +1,29 @@
+# Pools
+
+A pool is a content-addressed directory the validator draws units from:
+
+```
+pool.json          manifest (tasks, variants, per-axis eligibility, pool_id = sha256 of the rest)
+bddl/<group>/…     LIBERO BDDL files (originals, LIBERO-PRO swaps, table-swapped rewrites)
+init/<group>/…     initial states as npz (converted from LIBERO's pickled .pruned_init at build time)
+demos/<task>/…     demonstrations as npz (upright frames, proprioception, actions, initial state)
+```
+
+Build (needs the BPP conda environment and the raw downloads under `~/.cache/icilval/raw`):
+
+```bash
+MUJOCO_GL=egl icilval pools build --out pools/2026.09-v1 [--stage base spatial environment object composition finalize] [--limit N]
+icilval pools verify pools/2026.09-v1
+icilval pools push pools/2026.09-v1 --repo <owner>/icil-competition-pools
+```
+
+Validation during the build keeps, per variant, the initial states (or displacement slots) where
+the scene is feasible and the goal is not already satisfied. The pool id is pinned in
+`spec.json` (`pools.pool_id`); the validator refuses a pool that does not match.
+
+Raw inputs: `yifengzhu-hf/LIBERO-datasets` (spatial/goal/object/10), `zhouxueyang/LIBERO-Pro`,
+`austinpatel/libero_gen_goal_chain_hdf5` (first-step and selected chain views),
+`austinpatel/libero_gen_spatial_combination_hdf5` (selected view), BPP's LIBERO checkout.
+
+`icilval pools generate` runs BPP's LIBERO-Gen scripts with `affordance.yaml` to add
+organizer-generated tasks under `generated/`; those are never published as training data.

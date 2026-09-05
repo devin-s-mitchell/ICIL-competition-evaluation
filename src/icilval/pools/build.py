@@ -359,39 +359,7 @@ def stage_environment(
                 )
                 log.info("environment %s: %d inits", vid, n)
 
-            # floor/wall styles: same geometry and init states, different textures
-            for floor, wall in STYLE_COMBOS:
-                vid = f"{task_id}#style:{floor}+{wall}"
-                if vid in pool.variants:
-                    continue
-                tree = json.loads(json.dumps(base_tree))
-                B.set_scene_properties(tree, floor, wall)
-                bddl_rel = f"bddl/{suite}_style/{name}__{floor}__{wall}.bddl"
-                pool.path(bddl_rel).parent.mkdir(parents=True, exist_ok=True)
-                B.dump(tree, pool.path(bddl_rel))
-                inst = None
-                if validate and base_env is not None:
-                    venv = V.build_variant_env(pool.path(bddl_rel), spec)
-                    if venv is None:
-                        continue
-                    ok = V.render_differs(base_env, venv, base_states[0])
-                    inst = V.valid_instances(venv, base_states) if ok else []
-                    venv.close()
-                    if not ok:
-                        log.warning("%s: style has no visible effect; dropped", vid)
-                        continue
-                pool.variants[vid] = PoolVariant(
-                    variant_id=vid,
-                    axis="environment",
-                    base_task=task_id,
-                    kind="style",
-                    params={"floor_style": floor, "wall_style": wall},
-                    bddl=bddl_rel,
-                    init=task.init,
-                    n_init=task.n_init,
-                    validated=validate,
-                    instances=inst,
-                )
+            # (floor/wall styles are outside the agentview frame; they change nothing the policy sees, so no style variants)
 
             # lighting only
             vid = f"{task_id}#lighting"

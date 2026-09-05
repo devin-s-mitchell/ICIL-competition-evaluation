@@ -34,7 +34,9 @@ def displace_objects(
     before = {name: env.object_position(name).copy() for name in moves}
     for name, mv in moves.items():
         joint = env.object_joint(name)
-        qpos = np.array(sim.data.get_joint_qpos(joint), dtype=np.float64)
+        qpos = np.array(sim.data.get_joint_qpos(joint), dtype=np.float64).reshape(-1)
+        if qpos.shape != (7,):
+            raise Infeasible(f"{name} is not a free-joint object (qpos has {qpos.size} dofs)")
         qpos[0] += float(mv["delta_xy"][0])
         qpos[1] += float(mv["delta_xy"][1])
         qpos[2] += 0.005  # lift a hair so a rotated mesh does not start inside the table

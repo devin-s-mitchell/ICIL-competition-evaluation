@@ -41,6 +41,7 @@ def displacement_slots(
 ) -> list[int]:
     """Slots (instance * directions + k) where the displacement is feasible."""
     out = []
+    failures: dict[str, int] = {}
     for i, s in enumerate(states):
         for k in range(directions):
             try:
@@ -48,10 +49,17 @@ def displacement_slots(
                 displace_objects(env, moves_for(k), min_delta_m=min_delta_m, settle_steps=10)
                 if not env.success():
                     out.append(i * directions + k)
-            except Infeasible:
-                continue
+            except Infeasible as exc:
+                key = str(exc).split(" at ")[0].split(" moved ")[0].split(" fell ")[0]
+                failures[key] = failures.get(key, 0) + 1
             except Exception as exc:  # noqa: BLE001
-                log.warning("instance %d dir %d: %s", i, k, exc)
+                failures[f"{type(exc).__name__}: {exc}"] = (
+                    failures.get(f"{type(exc).__name__}: {exc}", 0) + 1
+                )
+    if failures:
+        log.info(
+            "displacement rejections: %s", dict(sorted(failures.items(), key=lambda kv: -kv[1])[:4])
+        )
     return out
 
 
@@ -83,21 +91,47 @@ def pose_instances(
     )
 
 
-def regenerate_init_states(env: LiberoEnv, n: int, seed: int = 7) -> np.ndarray:
-    """Sample fresh initial states through LIBERO's own placement sampler."""
-    states = []
-    for i in range(n):
-        env.reset(seed + i, None)
-        env.settle(5)
-        if env.success():
+def regenerate_init_states(
+    env: LiberoEnv, n: int, seed: int = 7, max_attempts: int | None = None
+) -> np.ndarray:
+    """Sample fresh initial states through LIBERO's own placement sampler; keep only stable ones."""
+    states: list[np.ndarray] = []
+    attempts = 0
+    limit = max_attempts or n * 3
+    while len(states) < n and attempts < limit:
+        attempts += 1
+        try:
+            env.reset(seed + attempts, None)
+            env.settle(10)
+        except Exception as exc:  # noqa: BLE001
+            log.debug("regenerate: reset failed: %s", exc)
             continue
+        state = env.sim_state()
+        if not np.all(np.isfinite(state)) or env.success():
+            continue
+        before = {o: env.object_position(o) for o in env.movable_objects()}
+        env.settle(20)
+        after = env.sim_state()
+        if not np.all(np.isfinite(after)):
+            continue
+        if any(np.linalg.norm(env.object_position(o) - before[o]) > 0.02 for o in before):
+            continue  # objects still falling or jittering: not a resting state
         states.append(env.sim_state())
+    if len(states) < n:
+        log.warning(
+            "regenerate: only %d of %d stable initial states after %d attempts",
+            len(states),
+            n,
+            attempts,
+        )
     return np.stack(states) if states else np.zeros((0, 0))
 
 
-def build_variant_env(bddl_path: Path, spec: Spec) -> LiberoEnv | None:
+def build_variant_env(
+    bddl_path: Path, spec: Spec, scene_properties: dict[str, str] | None = None
+) -> LiberoEnv | None:
     try:
-        return LiberoEnv(bddl_path, spec)
+        return LiberoEnv(bddl_path, spec, scene_properties=scene_properties)
     except Exception as exc:  # noqa: BLE001
         log.warning("cannot build %s: %s", bddl_path.name, exc)
         return None
