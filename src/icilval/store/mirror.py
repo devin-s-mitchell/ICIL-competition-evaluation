@@ -10,6 +10,10 @@ from ..spec import Spec
 
 log = logging.getLogger(__name__)
 
+# The repository's own files rather than the store's: the Hub writes `.gitattributes`, and the
+# dataset card is written by hand. A rebuilt store must not take either of them with it.
+REPO_OWNED = frozenset({".gitattributes", "README.md"})
+
 
 def store_files(root: Path) -> list[str]:
     """Every file of a store that belongs in the mirror, relative to its root.
@@ -75,8 +79,7 @@ class Mirror:
             raise ValueError(f"{self.root} holds no files; refusing to empty {self.repo}")
         info = self.api.repo_info(self.repo, repo_type="dataset", files_metadata=False)
         remote = {s.rfilename for s in (info.siblings or [])}
-        # `.gitattributes` is the Hub's own, not ours.
-        stale = sorted(remote - set(local) - {".gitattributes"})
+        stale = sorted(remote - set(local) - REPO_OWNED)
         ops: list[Any] = [CommitOperationDelete(path_in_repo=f) for f in stale]
         ops += [
             CommitOperationAdd(path_in_repo=f, path_or_fileobj=str(self.root / f)) for f in local

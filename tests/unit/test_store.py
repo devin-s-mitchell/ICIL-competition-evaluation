@@ -187,3 +187,12 @@ def test_mirror_lists_only_the_store_files(spec, tmp_path):
     assert "manifest.json" in files
     assert f"tracks/{spec.track_id}/head.json" in files
     assert not any(f.startswith(".") or "/." in f for f in files)
+
+
+def test_prune_keeps_the_repository_own_files():
+    """A rebuilt store replaces the records; it does not take the dataset card with it."""
+    from icilval.store.mirror import REPO_OWNED
+
+    remote = {"README.md", ".gitattributes", "manifest.json", "events/t/old.json", "media/aa/x.mp4"}
+    local = {"manifest.json", "events/t/new.json"}
+    assert sorted(remote - local - REPO_OWNED) == ["events/t/old.json", "media/aa/x.mp4"]
