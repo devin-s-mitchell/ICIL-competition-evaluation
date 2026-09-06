@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -11,9 +12,11 @@ from typing import Any
 
 from .canon import canonical_sha256
 
-AXES: tuple[str, ...] = ("spatial", "environment", "object", "composition")
 SPEC_ENV = "ICILVAL_SPEC"
 SCHEMA_ENV = "ICILVAL_STORE_SCHEMA"
+SIMULATORS = ("libero", "draw")
+SKILL_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+SKILL_CODE_RE = re.compile(r"^[a-z]{2}$")
 
 
 def _repo_root() -> Path | None:
@@ -57,16 +60,46 @@ def validate_spec(doc: dict[str, Any]) -> list[str]:
     need("track.id", isinstance(track.get("id"), str) and bool(track.get("id")))
     need("track.k_demos==1", track.get("k_demos") == 1)
     need("track.language==none", track.get("language") == "none")
-    axes = doc.get("axes") or {}
-    need("axes keys", tuple(axes.keys()) == AXES)
-    for axis, a in axes.items():
-        need(f"axes.{axis}.max_steps", isinstance(a.get("max_steps"), int) and a["max_steps"] > 0)
+    skills = doc.get("skills") or {}
+    need("skills non-empty", isinstance(skills, dict) and bool(skills))
+    codes: set[str] = set()
+    for sid, s in skills.items():
+        need(f"skills.{sid} id", bool(SKILL_ID_RE.match(sid)))
+        if not isinstance(s, dict):
+            errors.append(f"skills.{sid}: mapping")
+            continue
+        code = s.get("code")
+        need(f"skills.{sid}.code", isinstance(code, str) and bool(SKILL_CODE_RE.match(code)))
+        need(f"skills.{sid}.code unique", code not in codes)
+        codes.add(str(code))
+        need(f"skills.{sid}.title", isinstance(s.get("title"), str) and bool(s.get("title")))
+        need(f"skills.{sid}.architecture", isinstance(s.get("architecture"), str))
+        need(f"skills.{sid}.simulator", s.get("simulator") in SIMULATORS)
+        need(f"skills.{sid}.max_steps", isinstance(s.get("max_steps"), int) and s["max_steps"] > 0)
+        need(f"skills.{sid}.environment", isinstance(s.get("environment"), dict))
+        env = s.get("environment") or {}
+        for key in ("obs_history", "action_horizon", "exec_horizon", "prompt_actions_per_chunk"):
+            need(f"skills.{sid}.environment.{key}", isinstance(env.get(key), int) and env[key] > 0)
+        perts = s.get("perturbations") or {}
+        need(f"skills.{sid}.perturbations non-empty", isinstance(perts, dict) and bool(perts))
+        for pid, p in perts.items():
+            need(f"skills.{sid}.perturbations.{pid} id", bool(SKILL_ID_RE.match(pid)))
+            need(
+                f"skills.{sid}.perturbations.{pid} selects",
+                isinstance(p, dict) and (bool(p.get("variant_kinds")) or bool(p.get("task_kinds"))),
+            )
+        if s.get("simulator") == "draw":
+            success = s.get("success") or {}
+            need(
+                f"skills.{sid}.success.threshold>0",
+                isinstance(success.get("threshold"), (int, float)) and success["threshold"] > 0,
+            )
     duel = doc.get("duel") or {}
     sizes = duel.get("sizes") or {}
     need("duel.default_size in sizes", duel.get("default_size") in sizes)
     for name, s in sizes.items():
-        n = s.get("units_per_axis")
-        need(f"duel.sizes.{name}.units_per_axis>=1", isinstance(n, int) and n >= 1)
+        n = s.get("units_per_skill")
+        need(f"duel.sizes.{name}.units_per_skill>=1", isinstance(n, int) and n >= 1)
     margin = duel.get("score_margin")
     need("duel.score_margin in [0,100]", isinstance(margin, (int, float)) and 0 <= margin <= 100)
     void = duel.get("max_void_fraction")
@@ -92,7 +125,7 @@ class Spec:
     path: Path
     fingerprint: str
 
-    # -- track / axes
+    # -- track
     @property
     def version(self) -> int:
         return int(self.raw["spec_version"])
@@ -105,15 +138,46 @@ class Spec:
     def track(self) -> dict[str, Any]:
         return self.raw["track"]
 
+    # -- skills
     @property
-    def axes(self) -> tuple[str, ...]:
-        return AXES
+    def skills(self) -> tuple[str, ...]:
+        return tuple(self.raw["skills"].keys())
 
-    def axis(self, name: str) -> dict[str, Any]:
-        return self.raw["axes"][name]
+    def skill(self, name: str) -> dict[str, Any]:
+        return self.raw["skills"][name]
 
-    def max_steps(self, axis: str) -> int:
-        return int(self.raw["axes"][axis]["max_steps"])
+    def skill_code(self, name: str) -> str:
+        return str(self.skill(name)["code"])
+
+    def skill_for_code(self, code: str) -> str:
+        for s in self.skills:
+            if self.skill_code(s) == code:
+                return s
+        raise KeyError(code)
+
+    def skill_title(self, name: str) -> str:
+        return str(self.skill(name)["title"])
+
+    def architecture(self, name: str) -> str:
+        return str(self.skill(name)["architecture"])
+
+    def simulator(self, name: str) -> str:
+        return str(self.skill(name)["simulator"])
+
+    def max_steps(self, name: str) -> int:
+        return int(self.skill(name)["max_steps"])
+
+    def env(self, name: str) -> dict[str, Any]:
+        return self.skill(name)["environment"]
+
+    def perturbations(self, name: str) -> dict[str, dict[str, Any]]:
+        return self.skill(name)["perturbations"]
+
+    def perturbation(self, skill: str, group: str) -> dict[str, Any]:
+        return self.perturbations(skill)[group]
+
+    def success(self, name: str) -> dict[str, Any] | None:
+        return self.skill(name).get("success")
 
     # -- duel
     @property
@@ -131,11 +195,11 @@ class Spec:
     def size_of(self, size: str | None) -> str:
         return size if size in self.raw["duel"]["sizes"] else self.default_size
 
-    def units_per_axis(self, size: str | None = None) -> int:
-        return int(self.raw["duel"]["sizes"][self.size_of(size)]["units_per_axis"])
+    def units_per_skill(self, size: str | None = None) -> int:
+        return int(self.raw["duel"]["sizes"][self.size_of(size)]["units_per_skill"])
 
     def units_per_duel(self, size: str | None = None) -> int:
-        return self.units_per_axis(size) * len(AXES)
+        return self.units_per_skill(size) * len(self.skills)
 
     @property
     def score_margin(self) -> float:
@@ -177,10 +241,6 @@ class Spec:
     @property
     def baseline(self) -> dict[str, Any]:
         return self.raw["baseline"]
-
-    @property
-    def environment(self) -> dict[str, Any]:
-        return self.raw["environment"]
 
 
 def load_spec_file(path: str | Path) -> Spec:

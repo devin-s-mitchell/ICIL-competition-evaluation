@@ -1,9 +1,11 @@
 """The pool manifest: everything a duel draws from, content-addressed.
 
-A pool is a directory holding `pool.json` plus `bddl/`, `init/` and `demos/`.
-Tasks are the things a prompt demo exists for; variants are perturbed copies of
-a task's scene (same goal, different BDDL + init states). The object and
-composition axes draw tasks; spatial and environment draw variants.
+A pool is a directory holding `pool.json` plus, per skill, the files its
+simulator needs: `bddl/`, `init/` and `demos/` for LIBERO, `demos/` for the
+drawing board. Tasks are the things a prompt demonstration exists for;
+variants are perturbed copies of a LIBERO task's scene (same goal, different
+BDDL + init states). Eligibility is kept per skill and per perturbation
+group, in the order `spec.json` lists them.
 """
 
 from __future__ import annotations
@@ -15,26 +17,28 @@ from typing import Any
 
 from ..canon import canonical_sha256
 
-POOL_SCHEMA = 1
+POOL_SCHEMA = 2
 
 
 @dataclass
 class PoolTask:
     task_id: str
-    axis: str
+    skill: str
+    kind: str  # base | object_swap | drawing
     suite: str
-    bddl: str
     language: str
-    init: str
     n_init: int
-    goal: list[list[str]]
     demos: list[str]
     max_steps: int
+    bddl: str | None = None
+    init: str | None = None
+    goal: list[list[str]] = field(default_factory=list)
     steps: list[list[str]] = field(default_factory=list)
     demo_init_index: dict[str, int | None] = field(default_factory=dict)
     provenance: dict[str, Any] = field(default_factory=dict)
     perturbation: dict[str, Any] = field(default_factory=dict)
     instances: list[int] | None = None
+    meta: dict[str, Any] = field(default_factory=dict)
 
     @property
     def valid_instances(self) -> list[int]:
@@ -48,7 +52,7 @@ class PoolTask:
 @dataclass
 class PoolVariant:
     variant_id: str
-    axis: str
+    skill: str
     base_task: str
     kind: str
     params: dict[str, Any]
@@ -71,13 +75,18 @@ class Pool:
     sources: dict[str, Any]
     tasks: dict[str, PoolTask]
     variants: dict[str, PoolVariant]
-    axes: dict[str, dict[str, list[str]]]
+    skills: dict[str, dict[str, dict[str, list[str]]]]
     pool_id: str | None = None
     root: Path | None = None
 
     # -- (de)serialisation
     @classmethod
     def from_dict(cls, d: dict[str, Any], root: Path | None = None) -> Pool:
+        schema = int(d.get("schema", POOL_SCHEMA))
+        if schema != POOL_SCHEMA:
+            raise ValueError(
+                f"pool schema {schema} is not {POOL_SCHEMA}; run `icilval pools upgrade`"
+            )
         tasks = {
             k: PoolTask(task_id=k, **{kk: vv for kk, vv in v.items() if kk != "task_id"})
             for k, v in d.get("tasks", {}).items()
@@ -87,14 +96,15 @@ class Pool:
             for k, v in d.get("variants", {}).items()
         }
         return cls(
-            schema=int(d.get("schema", POOL_SCHEMA)),
+            schema=schema,
             pool_version=str(d["pool_version"]),
             spec_version=int(d["spec_version"]),
             sources=dict(d.get("sources", {})),
             tasks=tasks,
             variants=variants,
-            axes={
-                a: {"eligible": list(v.get("eligible", []))} for a, v in d.get("axes", {}).items()
+            skills={
+                s: {g: {"eligible": list(e.get("eligible", []))} for g, e in groups.items()}
+                for s, groups in d.get("skills", {}).items()
             },
             pool_id=d.get("pool_id"),
             root=root,
@@ -103,7 +113,8 @@ class Pool:
     def to_dict(self, with_id: bool = True) -> dict[str, Any]:
         def task_dict(t: PoolTask) -> dict[str, Any]:
             return {
-                "axis": t.axis,
+                "skill": t.skill,
+                "kind": t.kind,
                 "suite": t.suite,
                 "bddl": t.bddl,
                 "language": t.language,
@@ -117,11 +128,12 @@ class Pool:
                 "provenance": t.provenance,
                 "perturbation": t.perturbation,
                 "instances": t.instances,
+                "meta": t.meta,
             }
 
         def variant_dict(v: PoolVariant) -> dict[str, Any]:
             return {
-                "axis": v.axis,
+                "skill": v.skill,
                 "base_task": v.base_task,
                 "kind": v.kind,
                 "params": v.params,
@@ -139,7 +151,10 @@ class Pool:
             "sources": self.sources,
             "tasks": {k: task_dict(t) for k, t in sorted(self.tasks.items())},
             "variants": {k: variant_dict(v) for k, v in sorted(self.variants.items())},
-            "axes": {a: {"eligible": sorted(v["eligible"])} for a, v in sorted(self.axes.items())},
+            "skills": {
+                s: {g: {"eligible": sorted(e["eligible"])} for g, e in groups.items()}
+                for s, groups in sorted(self.skills.items())
+            },
         }
         if with_id:
             d["pool_id"] = self.pool_id
@@ -172,14 +187,20 @@ class Pool:
         return path
 
     # -- lookups
-    def eligible(self, axis: str) -> list[str]:
-        return sorted(self.axes.get(axis, {}).get("eligible", []))
+    def groups(self, skill: str) -> list[str]:
+        return list(self.skills.get(skill, {}).keys())
 
-    def resolve(self, axis: str, entry: str) -> tuple[PoolTask, PoolVariant | None]:
+    def eligible(self, skill: str, group: str) -> list[str]:
+        return sorted(self.skills.get(skill, {}).get(group, {}).get("eligible", []))
+
+    def resolve(self, entry: str) -> tuple[PoolTask, PoolVariant | None]:
         if entry in self.variants:
             v = self.variants[entry]
             return self.tasks[v.base_task], v
         return self.tasks[entry], None
+
+    def tasks_of(self, skill: str) -> list[PoolTask]:
+        return [t for _, t in sorted(self.tasks.items()) if t.skill == skill]
 
     def path(self, rel: str) -> Path:
         if self.root is None:

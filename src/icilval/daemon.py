@@ -159,13 +159,16 @@ def make_runtime(
     live_token: str | None,
     mirror_repo: str | None,
     hf_token: str | None = None,
+    enforce_pool_id: bool = True,
 ) -> Runtime:
+    """`enforce_pool_id`: the daemon and the publishing commands refuse a pool other than the one
+    pinned in spec.json; the smoke test runs a small local pool and turns the check off."""
     from .live import LiveReporter
     from .pools.schema import Pool
 
     signer = Signer.from_file(key_file)
     pool = Pool.load(pool_dir)
-    if spec.pools.get("pool_id") and spec.pools["pool_id"] != pool.pool_id:
+    if enforce_pool_id and spec.pools.get("pool_id") and spec.pools["pool_id"] != pool.pool_id:
         raise RuntimeError(
             f"pool {pool.pool_id} does not match spec.pools.pool_id {spec.pools['pool_id']}"
         )

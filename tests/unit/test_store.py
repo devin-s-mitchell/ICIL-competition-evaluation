@@ -5,7 +5,7 @@ from icilval.ids import ModelRef
 from icilval.spec import load_spec_file
 from icilval.store.records import (
     duel_event,
-    empty_axis_scores,
+    empty_skill_scores,
     index_record,
     now_iso,
     unit_verdict_from_unit,
@@ -24,8 +24,16 @@ def small_spec(spec, tmp_path, lines_per_part=2):
 
 def make_record(spec, kind, block, king, challenger, dethroned=False, event=None):
     eid = "%064x" % (block + 1)
-    ks = {**empty_axis_scores(), "spatial": 0.5, "average": 0.5} if kind == "duel" else None
-    cs = {**empty_axis_scores(), "spatial": 0.9, "average": 0.9} if kind == "duel" else None
+    ks = (
+        {**empty_skill_scores(spec.skills), "pick_and_place": 0.5, "average": 0.5}
+        if kind == "duel"
+        else None
+    )
+    cs = (
+        {**empty_skill_scores(spec.skills), "pick_and_place": 0.9, "average": 0.9}
+        if kind == "duel"
+        else None
+    )
     return index_record(
         schema=spec.store["schema"],
         event_id=eid,
@@ -50,7 +58,7 @@ def publish(store, spec, record, units=None, media_count=0):
         spec_version=spec.version,
         spec_fingerprint=spec.fingerprint,
         units=units or [],
-        units_per_axis=spec.units_per_axis("smoke"),
+        units_per_skill=spec.units_per_skill("smoke"),
         started_at=now_iso(),
         wall_seconds=1.5,
     )
@@ -101,8 +109,9 @@ def test_media_and_torn_line(spec, tmp_path):
     assert store.put_media(clip) == sha
     unit = unit_verdict_from_unit(
         {
-            "unit_id": "sp-000",
-            "axis": "spatial",
+            "unit_id": "pp-000",
+            "skill": "pick_and_place",
+            "kind": "spatial",
             "index": 0,
             "task": "t",
             "instance": 1,
@@ -119,6 +128,7 @@ def test_media_and_torn_line(spec, tmp_path):
             "king_success": True,
             "challenger_success": False,
             "outcome": "king",
+            "king_metric": 7.25,
         }
     )
     king = ModelRef.make("org/genesis", "a" * 40)
@@ -133,6 +143,20 @@ def test_media_and_torn_line(spec, tmp_path):
     # missing media is an error
     store.media_path(sha, "mp4").unlink()
     assert any("media" in e for e in verify_store(tmp_path / "store", sp).errors)
+
+
+def test_schema_rejects_axis_scores(spec, tmp_path):
+    sp = small_spec(spec, tmp_path, lines_per_part=1000)
+    signer = Signer.generate()
+    store = Store(tmp_path / "store", sp, signer)
+    store.init(signer.verify_key_hex, None)
+    king = ModelRef.make("org/genesis", "a" * 40)
+    ch = ModelRef.make("org/ch", "b" * 40)
+    rec = make_record(sp, "duel", 1, king, ch)
+    rec["king_scores"] = {"spatial": 0.5, "average": 1.5}
+    publish(store, sp, rec)
+    report = verify_store(tmp_path / "store", sp)
+    assert any("schema" in e for e in report.errors)
 
 
 def test_store_lock_is_exclusive(tmp_path):

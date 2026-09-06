@@ -1,5 +1,6 @@
-"""One scored episode: restore the initial state, apply the unit's perturbation, prompt the
-policy with one demonstration, run action chunks until success or the step cap, record video.
+"""One scored LIBERO episode: restore the initial state, apply the unit's perturbation, prompt
+the policy with one demonstration, run action chunks until success or the step cap, record
+video. `EpisodeResult` is shared with the drawing episode (`draw_episode.py`).
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ class EpisodeResult:
     success: bool = False
     progress: float | None = None
     first_step_done_at: int | None = None
+    metric: float | None = None
     steps: int = 0
     model_errors: int = 0
     wall_s: float = 0.0
@@ -69,10 +71,10 @@ def run_episode(
     executor: concurrent.futures.ThreadPoolExecutor | None = None,
 ) -> EpisodeResult:
     budgets = spec.budgets
-    env_cfg = spec.environment
+    env_cfg = spec.env(unit["skill"])
     exec_h = int(env_cfg["exec_horizon"])
     warmup = int(env_cfg["warmup_open_gripper_steps"])
-    max_steps = int(unit.get("max_steps") or spec.max_steps(unit["axis"]))
+    max_steps = int(unit.get("max_steps") or spec.max_steps(unit["skill"]))
     soft_t = float(budgets["act_soft_timeout_s"])
     hard_t = float(budgets["act_hard_timeout_s"])
     max_errors = int(budgets["max_model_errors_per_episode"])

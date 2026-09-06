@@ -1,6 +1,6 @@
 {
-  "spec_version": 1,
-  "_comment": "Normative constants for the RoboTensor one-demonstration in-context imitation learning competition. The validator and the dashboard both read this file; nothing in it may be duplicated as a literal in code. spec_fingerprint = sha256 of the canonical JSON of this file. Changing spec_version changes every derived duel_id and therefore every draw; bump it only deliberately.",
+  "spec_version": 2,
+  "_comment": "Normative constants for the RoboTensor one-demonstration in-context imitation learning competition. The validator and the dashboard both read this file; nothing in it may be duplicated as a literal in code. spec_fingerprint = sha256 of the canonical JSON of this file. Changing spec_version changes every derived duel_id and therefore every draw; bump it only deliberately. Version 2 replaced the four perturbation axes with skills: every skill is scored as one success rate and the final score is the mean over skills.",
   "track": {
     "id": "icil_1demo",
     "title": "One-demo in-context imitation",
@@ -8,154 +8,219 @@
     "language": "none",
     "_comment": "The model is shown exactly one demonstration of the task and no language. The demonstration is the whole prompt."
   },
-  "environment": {
-    "behavior_prompting_commit": "ec29e62dde999ac3423df7d99a773c1dd28b480e",
-    "libero_commit": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
-    "mujoco": "3.3.0",
-    "robosuite": "1.4.0",
-    "controller": "OSC_POSE",
-    "control_delta": true,
-    "control_freq": 20,
-    "cameras": [
-      "agentview",
-      "robot0_eye_in_hand"
-    ],
-    "camera_resolution": 128,
-    "policy_image_resolution": 224,
-    "action_dim": 7,
-    "obs_history": 2,
-    "action_horizon": 16,
-    "exec_horizon": 12,
-    "warmup_open_gripper_steps": 12,
-    "prompt_actions_per_chunk": 20
-  },
-  "axes": {
-    "spatial": {
-      "title": "Spatial change",
-      "blurb": "Same task as the demonstration, but the objects and the robot start somewhere else. Positions come from LIBERO-PRO's swap and pose perturbations plus an explicit displacement ladder.",
+  "skills": {
+    "pick_and_place": {
+      "code": "pp",
+      "title": "Pick and place",
+      "blurb": "Grasp one object and place it at a destination, as BPP's LIBERO pick-and-place domain defines it: one grasp stage followed by one place stage. Every unit perturbs the demonstrated scene - positions, room and lights, or the object pairing - and the demonstration never starts from the scored initial state.",
+      "architecture": "bpp_libero_v1",
+      "simulator": "libero",
       "max_steps": 550,
-      "variant_kinds": [
-        "pro_swap",
-        "pro_pose",
-        "level"
-      ],
-      "levels": {
-        "L1": {
-          "radius_m": 0.05,
-          "min_delta_m": 0.03
+      "environment": {
+        "behavior_prompting_commit": "ec29e62dde999ac3423df7d99a773c1dd28b480e",
+        "libero_commit": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+        "mujoco": "3.3.0",
+        "robosuite": "1.4.0",
+        "controller": "OSC_POSE",
+        "control_delta": true,
+        "control_freq": 20,
+        "cameras": [
+          "agentview",
+          "robot0_eye_in_hand"
+        ],
+        "camera_resolution": 128,
+        "policy_image_resolution": 224,
+        "action_dim": 7,
+        "obs_history": 2,
+        "action_horizon": 16,
+        "exec_horizon": 12,
+        "warmup_open_gripper_steps": 12,
+        "prompt_actions_per_chunk": 20,
+        "prompt_pad_end": "zeros"
+      },
+      "perturbations": {
+        "spatial": {
+          "title": "Spatial change",
+          "blurb": "Same task as the demonstration, but the objects and the robot start somewhere else. Positions come from LIBERO-PRO's swap and pose perturbations plus an explicit displacement ladder.",
+          "variant_kinds": [
+            "pro_swap",
+            "pro_pose",
+            "level"
+          ],
+          "levels": {
+            "L1": {
+              "radius_m": 0.05,
+              "min_delta_m": 0.03
+            },
+            "L2": {
+              "radius_m": 0.1,
+              "min_delta_m": 0.06
+            },
+            "L3": {
+              "radius_m": 0.15,
+              "min_delta_m": 0.1
+            },
+            "L4": {
+              "radius_m": 0.2,
+              "min_delta_m": 0.14,
+              "all_objects": true
+            },
+            "L5": {
+              "radius_m": 0.25,
+              "min_delta_m": 0.18,
+              "all_objects": true
+            }
+          },
+          "yaw_max_rad": 0.7853981633974483,
+          "robot_init_noise": 0.02,
+          "_selects": "variants of these kinds"
         },
-        "L2": {
-          "radius_m": 0.1,
-          "min_delta_m": 0.06
+        "environment": {
+          "title": "Environment change",
+          "blurb": "Same task and layout, but the scene sits on a different table in a different room, and the lights are randomized.",
+          "variant_kinds": [
+            "table",
+            "lighting"
+          ],
+          "tables": [
+            "kitchen_table",
+            "living_room_table",
+            "study_table"
+          ],
+          "lighting": {
+            "diffuse_scale": [
+              0.3,
+              1.5
+            ],
+            "ambient_add": [
+              0.0,
+              0.35
+            ],
+            "specular_scale": [
+              0.0,
+              1.5
+            ],
+            "pos_jitter_m": 1.0,
+            "dir_jitter_rad": 0.5,
+            "headlight_scale": [
+              0.4,
+              1.2
+            ],
+            "light_drop_prob": 0.25
+          },
+          "_selects": "variants of these kinds"
         },
-        "L3": {
-          "radius_m": 0.15,
-          "min_delta_m": 0.1
-        },
-        "L4": {
-          "radius_m": 0.2,
-          "min_delta_m": 0.14,
-          "all_objects": true
-        },
-        "L5": {
-          "radius_m": 0.25,
-          "min_delta_m": 0.18,
-          "all_objects": true
+        "object": {
+          "title": "Object change",
+          "blurb": "Same operation, but the grasped object or its destination is swapped for another that affords it. The demonstration shows the new pairing; the pairing was never published as training data.",
+          "source_splits": [
+            "generated",
+            "libero_goal_chain_secondstep_view",
+            "libero_spatial_selected_combinations_view"
+          ],
+          "task_kinds": [
+            "object_swap"
+          ],
+          "_selects": "tasks of these kinds"
         }
       },
-      "yaw_max_rad": 0.7853981633974483,
-      "robot_init_noise": 0.02
-    },
-    "environment": {
-      "title": "Environment change",
-      "blurb": "Same task and layout, but the scene sits on a different table in a different room, and the lights are randomized.",
-      "max_steps": 550,
-      "variant_kinds": [
-        "table",
-        "lighting"
-      ],
-      "tables": [
-        "kitchen_table",
-        "living_room_table",
-        "study_table"
-      ],
-      "lighting": {
-        "diffuse_scale": [
-          0.3,
-          1.5
+      "task_filter": {
+        "goal_predicates": [
+          "On",
+          "In"
         ],
-        "ambient_add": [
-          0.0,
-          0.35
+        "max_goal_predicates": 1,
+        "exclude_verbs": [
+          "open",
+          "close",
+          "turn on",
+          "push"
         ],
-        "specular_scale": [
-          0.0,
-          1.5
-        ],
-        "pos_jitter_m": 1.0,
-        "dir_jitter_rad": 0.5,
-        "headlight_scale": [
-          0.4,
-          1.2
-        ],
-        "light_drop_prob": 0.25
+        "_comment": "A task belongs to the skill iff its goal is a single On/In predicate and its language names no open/close/turn-on/push stage - BPP's Grasp then Place, nothing else."
       }
     },
-    "object": {
-      "title": "Object change",
-      "blurb": "Same kind of task, but the target object is swapped for another object that affords the same operation. The demonstration shows the new pairing; the pairing was never published as training data.",
-      "max_steps": 550,
-      "source_splits": [
-        "generated",
-        "libero_goal_chain_secondstep_view",
-        "libero_spatial_selected_combinations_view"
-      ]
-    },
-    "composition": {
-      "title": "Composition",
-      "blurb": "Two single-step tasks done one after the other. The demonstration is one continuous recording of both steps; success means both goals hold at the end.",
-      "max_steps": 800,
-      "source_splits": [
-        "generated",
-        "libero_goal_chain_selected_view",
-        "libero_goal_chain_selected_inverse_view"
-      ],
-      "progress_diagnostic": true
+    "draw_anything": {
+      "code": "da",
+      "title": "Draw anything",
+      "blurb": "Reproduce a drawing shown once, on a whiteboard that has since been rotated. The demonstration is a human drawing the shape; the model draws it again on the turned board. BPP's DrawAnything-Sim domain.",
+      "architecture": "bpp_draw_v1",
+      "simulator": "draw",
+      "max_steps": 400,
+      "environment": {
+        "behavior_prompting_commit": "ec29e62dde999ac3423df7d99a773c1dd28b480e",
+        "control_freq": 10,
+        "window_size": 512,
+        "board_length": 350,
+        "policy_image_resolution": 224,
+        "render_resolution": 256,
+        "action_dim": 3,
+        "obs_history": 2,
+        "action_horizon": 16,
+        "exec_horizon": 12,
+        "prompt_actions_per_chunk": 10,
+        "prompt_pad_end": "no",
+        "cursor_start_range_px": [
+          50,
+          450
+        ],
+        "idle_stop_steps": 20,
+        "idle_stop_px": 20,
+        "_comment": "DrawAnything-Sim as BPP evaluates it: a 512 px canvas with a 350 px square board, 10 Hz position control of a pen (x, y, pen_down), one 224 px observation, prompts chunked every 10 actions with the trailing partial chunk dropped. An episode also ends when the pen has not moved idle_stop_px for idle_stop_steps steps, as in BPP's runner."
+      },
+      "perturbations": {
+        "rotation": {
+          "title": "Board rotation",
+          "blurb": "The board the model draws on is turned to a different angle than the board in the demonstration, by at least min_delta_rad.",
+          "task_kinds": [
+            "drawing"
+          ],
+          "angle_range_rad": [
+            -0.7853981633974483,
+            0.7853981633974483
+          ],
+          "min_delta_rad": 0.2617993877991494
+        }
+      },
+      "success": {
+        "metric": "chamfer_px",
+        "threshold": 4.0,
+        "_comment": "A unit succeeds iff the lowest symmetric Chamfer distance, in canvas pixels, between the demonstrated strokes and the drawn strokes at any step of the episode is at most threshold (the pen is 12 px wide). Calibrated on 80 units drawn from pool 2026.09-v2 with the genesis checkpoint: best-Chamfer percentiles 10/25/50/75/90 = 0.96/1.39/2.46/3.83/7.21 px; the baseline succeeds on 0.79 of the units at 4 px, its misses being the long multi-part drawings. See docs/pools.md."
+      }
     }
   },
   "pools": {
     "repo": "robotensor/icil-competition-pools",
-    "version": "2026.09-v1",
-    "pool_id": "7bf31989bda4b4147faf68d26f7102fc581e39c73ccd1101c467cc328847d259",
+    "version": "2026.09-v2",
+    "pool_id": "ae9645cdbc2ed24cdbea436d6677925070f0a4221c604a09e18c96dbd0dad83a",
     "demos_per_task": 10,
     "init_states_per_task": 50,
-    "_comment": "pool_id is filled by `icilval pools build` and must equal pool.json's id; the validator refuses to run on a mismatch."
+    "_comment": "pool_id is filled by `icilval pools build` (or `pools upgrade`) and must equal pool.json's id; the validator refuses to run on a mismatch. init_states_per_task also sizes the draw skill's table of (board angle, cursor start) instances."
   },
   "duel": {
     "default_size": "heavy",
     "sizes": {
       "smoke": {
-        "units_per_axis": 2
+        "units_per_skill": 3
       },
       "light": {
-        "units_per_axis": 5
+        "units_per_skill": 9
       },
       "medium": {
-        "units_per_axis": 10
+        "units_per_skill": 21
       },
       "heavy": {
-        "units_per_axis": 20
+        "units_per_skill": 42
       }
     },
     "score_margin": 3.0,
     "max_void_fraction": 0.1,
-    "_crown_comment": "Both sides run the identical unit list (same tasks, initial states, prompt demonstrations and seeds). Per-axis success rate is stored as a fraction in [0, 1]; the final score is the mean of the four axes. The challenger takes the crown iff challenger.average >= king.average + score_margin / 100. Paired per-unit outcomes are published as a diagnostic and never decide the crown.",
+    "_crown_comment": "Both sides run the identical unit list (same tasks, initial states, prompt demonstrations and seeds). Per-skill success rate is stored as a fraction in [0, 1]; the final score is the mean over skills. A skill's units are spread evenly over its perturbations, which are published per unit and never scored separately. The challenger takes the crown iff challenger.average >= king.average + score_margin / 100. Paired per-unit outcomes are published as a diagnostic and never decide the crown.",
     "derivation": {
       "duel_id": "sha256(spec_version|track|challenger.key|challenger.revision|king.key|king.revision)",
-      "unit_seed": "int(sha256(duel_id|axis|index)[:8], 16)",
+      "unit_seed": "int(sha256(duel_id|skill|index)[:8], 16)",
       "prompt_instance_disjoint": true
     },
-    "_max_steps_comment": "axes.<axis>.max_steps are per-axis caps; each task carries its own (smaller) limit from its source benchmark."
+    "_max_steps_comment": "skills.<skill>.max_steps are per-skill caps; each task carries its own (smaller) limit from its source benchmark."
   },
   "budgets": {
     "act_soft_timeout_s": 1.0,
@@ -167,13 +232,13 @@
     "model_load_seconds": 600
   },
   "model": {
-    "architecture": "bpp_libero_v1",
+    "layout": "<skill>/model.safetensors and <skill>/config.yaml for every skill in `skills`",
     "required_files": [
       "model.safetensors",
       "config.yaml"
     ],
     "max_params": 800000000,
-    "max_repo_bytes": 4294967296,
+    "max_repo_bytes": 8589934592,
     "allowed_extensions": [
       ".safetensors",
       ".yaml",
@@ -190,14 +255,14 @@
     "mutable_keys": [
       "name"
     ],
-    "_comment": "A submission is a Hugging Face model repo holding model.safetensors and config.yaml. The validator instantiates the architecture from its own allow-listed template (arch/bpp_libero_v1.cfg.json), diffs the submitted config against it, checks the safetensors header against arch/bpp_libero_v1.tensors.json, and loads weights strictly. No pickle is ever read and no entrant code runs.",
+    "_comment": "A submission is a Hugging Face model repo holding one directory per skill, each with model.safetensors and config.yaml. For every skill the validator instantiates the architecture from its own allow-listed template (arch/<architecture>.cfg.json), diffs the submitted config against it, checks the safetensors header against arch/<architecture>.tensors.json, and loads weights strictly. No pickle is ever read and no entrant code runs. max_params applies per skill; max_repo_bytes to the whole repo.",
     "_mutable_comment": "Dotted paths under `model` that may differ from the template without affecting inference. Training-only keys are overwritten by the converter, so they never differ."
   },
   "baseline": {
-    "repo": "robotensor/bpp-libero-genesis",
-    "revision": "478bbecdfd0ce3d66d49933319e7e9f2e874c9bd",
-    "label": "BPP public checkpoint (austinpatel/libero, converted)",
-    "_comment": "The genesis king. revision is pinned when the converted checkpoint is published."
+    "repo": "robotensor/bpp-genesis",
+    "revision": null,
+    "label": "BPP public checkpoints (austinpatel/libero and austinpatel/drawanything_sim, converted)",
+    "_comment": "The genesis king: one repo holding both converted public checkpoints. revision is pinned when it is published."
   },
   "media": {
     "video": {
@@ -212,16 +277,17 @@
       "camera": "agentview",
       "scope": "all"
     },
-    "demo_video": true
+    "demo_video": true,
+    "_comment": "resolution and camera describe LIBERO clips; draw clips are the board render at skills.draw_anything.environment.render_resolution and draw demonstration clips are the 224 px observation frames."
   },
   "store": {
-    "schema": 1,
+    "schema": 2,
     "index_lines_per_part": 1000,
     "media_bucket_hex": 2,
     "_layout_comment": "manifest.json; tracks/{track}/{head.json,queue.json,index-NNNN.jsonl}; events/{track}/{event_id}.json; media/{sha[:2]}/{sha}.mp4. Index lines are '<canonical_json>\\t<ed25519_signature_hex>', append-only."
   },
   "live": {
-    "schema": 1,
+    "schema": 2,
     "path": "/api/live",
     "media_flush_units": 4,
     "max_frame_bytes": 524288,

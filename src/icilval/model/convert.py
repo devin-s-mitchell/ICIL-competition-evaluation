@@ -14,6 +14,10 @@ import yaml
 
 SPLIT_INFO_KEY = "_extra_training_split_info"
 
+# BPP's package was called `umi_day` when some public checkpoints were trained; the classes
+# are the same, only the import path moved. Applied to every `_target_` in the model config.
+TARGET_RENAMES = {"umi_day.": "behavior_prompting."}
+
 # Training-only settings neutralised for inference. `pretrained` stays True: BPP's encoder only
 # builds through timm's pretrained path (its own init path rejects the patch-embed conv), so the
 # CLIP ViT-B/16 weights must be in the local timm/HF cache; they are overwritten by the strict
@@ -23,6 +27,21 @@ INFERENCE_OVERRIDES: dict[str, Any] = {
     "obs_encoder.obs_encoder.obs_encoder.non_prompt_train_image_transforms": None,
     "obs_encoder.obs_encoder.use_pool_modality_pos_embed": False,
 }
+
+
+def _rename_targets(node: Any) -> Any:
+    if isinstance(node, dict):
+        out = {}
+        for k, v in node.items():
+            if k == "_target_" and isinstance(v, str):
+                for old, new in TARGET_RENAMES.items():
+                    if v.startswith(old):
+                        v = new + v[len(old) :]
+            out[k] = _rename_targets(v)
+        return out
+    if isinstance(node, list):
+        return [_rename_targets(v) for v in node]
+    return node
 
 
 def _set_path(d: dict[str, Any], path: str, value: Any) -> None:
@@ -37,7 +56,7 @@ def _resolve_model_cfg(cfg: Any) -> tuple[dict[str, Any], dict[str, Any], int]:
 
     if not OmegaConf.has_resolver("hydra"):
         OmegaConf.register_new_resolver("hydra", lambda *a: "hydra")
-    model = OmegaConf.to_container(cfg.model, resolve=True)
+    model = _rename_targets(OmegaConf.to_container(cfg.model, resolve=True))
     shape_meta = OmegaConf.to_container(
         cfg.shape_meta if "shape_meta" in cfg else cfg.task.shape_meta, resolve=True
     )

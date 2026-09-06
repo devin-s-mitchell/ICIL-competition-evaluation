@@ -7,20 +7,21 @@ def test_ids_are_stable():
     assert ref.key == model_key("owner/model", "0123456789abcdef0123456789abcdef01234567")
     assert len(ref.key) == 16
     king = ModelRef.make("org/king", "abcdef0123456789abcdef0123456789abcdef01")
-    did = duel_id(1, "icil_1demo", ref, king)
-    assert len(did) == 64 and did == duel_id(1, "icil_1demo", ref, king)
-    assert did != duel_id(2, "icil_1demo", ref, king)
-    assert did != duel_id(1, "icil_1demo", ref, None)
-    assert unit_seed(did, "spatial", 0) != unit_seed(did, "spatial", 1)
-    assert 0 <= unit_seed(did, "object", 3) < 2**32
-    assert unit_id("composition", 7) == "co-007"
+    did = duel_id(2, "icil_1demo", ref, king)
+    assert len(did) == 64 and did == duel_id(2, "icil_1demo", ref, king)
+    assert did != duel_id(1, "icil_1demo", ref, king)
+    assert did != duel_id(2, "icil_1demo", ref, None)
+    assert unit_seed(did, "pick_and_place", 0) != unit_seed(did, "pick_and_place", 1)
+    assert unit_seed(did, "pick_and_place", 0) != unit_seed(did, "draw_anything", 0)
+    assert 0 <= unit_seed(did, "draw_anything", 3) < 2**32
+    assert unit_id("da", 7) == "da-007"
     assert event_id("duel", "icil_1demo", 4, did) != event_id("duel", "icil_1demo", 5, did)
 
 
 def test_golden_values():
     # Frozen: a change here changes every published id.
     assert model_key("a/b", "c") == "fdd11077ff89f6bf"
-    assert unit_seed("d", "spatial", 0) == 1941450640
+    assert unit_seed("d", "pick_and_place", 0) == 2563984751
 
 
 def test_hash_rng_determinism_and_range():

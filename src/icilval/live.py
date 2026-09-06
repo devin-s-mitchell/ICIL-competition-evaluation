@@ -9,7 +9,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from .spec import AXES, Spec
+from .spec import Spec
 from .store.records import now_iso
 
 log = logging.getLogger(__name__)
@@ -36,19 +36,20 @@ def build_frame(
 ) -> dict[str, Any]:
     if phase not in PHASES:
         raise ValueError(f"phase must be one of {PHASES}")
-    per_axis: dict[str, dict[str, dict[str, int]]] = {s: {} for s in ("challenger", "king")}
-    for s in per_axis:
-        for a in AXES:
-            axis_units = [u for u in units if u.get("axis") == a]
+    per_skill: dict[str, dict[str, dict[str, int]]] = {s: {} for s in ("challenger", "king")}
+    for s in per_skill:
+        for skill in spec.skills:
+            skill_units = [u for u in units if u.get("skill") == skill]
             done = sum(
-                1 for u in axis_units if isinstance(u.get(f"{s}_success"), bool) or u.get("void")
+                1 for u in skill_units if isinstance(u.get(f"{s}_success"), bool) or u.get("void")
             )
-            per_axis[s][a] = {"done": done, "total": len(axis_units)}
-    done = sum(v["done"] for v in per_axis[side].values()) if side in per_axis else 0
+            per_skill[s][skill] = {"done": done, "total": len(skill_units)}
+    done = sum(v["done"] for v in per_skill[side].values()) if side in per_skill else 0
     live_units = [
         {
             "unit_id": u.get("unit_id"),
-            "axis": u.get("axis"),
+            "skill": u.get("skill"),
+            "kind": u.get("kind"),
             "task": u.get("task"),
             "task_label": u.get("task_label"),
             "instance": u.get("instance"),
@@ -77,7 +78,7 @@ def build_frame(
         "side": side,
         "done": done,
         "total": len(units),
-        "axis_progress": per_axis,
+        "skill_progress": per_skill,
         "current": current,
         "recent_media": recent_media,
         "units": live_units,

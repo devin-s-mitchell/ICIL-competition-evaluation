@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any
 
 from ..ids import ModelRef
-from ..spec import AXES
 
 
 def now_iso() -> str:
@@ -72,7 +72,7 @@ def duel_event(
     spec_version: int,
     spec_fingerprint: str,
     units: list[dict[str, Any]],
-    units_per_axis: int,
+    units_per_skill: int,
     started_at: str,
     wall_seconds: float,
     sides: dict[str, Any] | None = None,
@@ -84,7 +84,7 @@ def duel_event(
         {
             "spec_version": spec_version,
             "spec_fingerprint": spec_fingerprint,
-            "units_per_axis": units_per_axis,
+            "units_per_skill": units_per_skill,
             "started_at": started_at,
             "wall_seconds": round(float(wall_seconds), 3),
             "sides": sides or {},
@@ -99,7 +99,8 @@ def unit_verdict_from_unit(unit: dict[str, Any]) -> dict[str, Any]:
     """The published shape of a unit before either side has run."""
     return {
         "unit_id": unit["unit_id"],
-        "axis": unit["axis"],
+        "skill": unit["skill"],
+        "kind": unit.get("kind", unit.get("perturbation", {}).get("kind", "")),
         "index": unit["index"],
         "task": unit["task"],
         "task_label": unit.get("task_label", unit["task"]),
@@ -116,6 +117,8 @@ def unit_verdict_from_unit(unit: dict[str, Any]) -> dict[str, Any]:
         "outcome": "tie",
         "king_progress": None,
         "challenger_progress": None,
+        "king_metric": None,
+        "challenger_metric": None,
         "king_steps": None,
         "challenger_steps": None,
         "king_error": None,
@@ -134,5 +137,5 @@ def media_shas(units: list[dict[str, Any]]) -> list[str]:
     return sorted(set(out))
 
 
-def empty_axis_scores() -> dict[str, float | None]:
-    return {**{a: None for a in AXES}, "average": None}
+def empty_skill_scores(skills: Sequence[str]) -> dict[str, float | None]:
+    return {**{s: None for s in skills}, "average": None}

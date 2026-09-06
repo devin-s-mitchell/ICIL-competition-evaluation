@@ -20,7 +20,7 @@ RESET_ATTEMPTS = 20
 
 
 def scene_properties_of(unit: dict[str, Any]) -> dict[str, str]:
-    """floor/wall styles a unit asks for (environment axis `style` variants)."""
+    """floor/wall styles a unit asks for (environment `style` variants)."""
     p = unit.get("perturbation", {})
     return {k: str(p[k]) for k in ("floor_style", "wall_style") if p.get(k)}
 
@@ -43,13 +43,15 @@ class LiberoEnv:
         bddl_path: str | Path,
         spec: Spec,
         *,
+        skill: str,
         render_size: int | None = None,
         gpu_id: int = -1,
         scene_properties: dict[str, str] | None = None,
     ):
         from libero.libero.envs import OffScreenRenderEnv
 
-        env_cfg = spec.environment
+        env_cfg = spec.env(skill)
+        self.skill = skill
         self.bddl_path = str(bddl_path)
         self.scene_properties = dict(scene_properties or {})
         extra = {"scene_properties": self.scene_properties} if self.scene_properties else {}

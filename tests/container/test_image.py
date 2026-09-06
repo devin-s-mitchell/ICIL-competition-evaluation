@@ -29,7 +29,12 @@ def _have_image():
 def test_cli_and_imports():
     out = _docker("run", "--rm", "--network", "none", IMAGE, "icilval", "--help").stdout
     assert "run-side" in out
-    code = "import torch, libero, robosuite, behavior_prompting, icilval, nacl, safetensors, imageio_ffmpeg; print('ok')"
+    code = (
+        "import torch, libero, robosuite, behavior_prompting, icilval, nacl, safetensors, imageio_ffmpeg, "
+        "pygame, pymunk, shapely; "
+        "from behavior_prompting.train_network.env.draw.draw_env import DrawEnv; "
+        "e = DrawEnv(boundary_angle=0.0); e.reset(); print('ok')"
+    )
     out = _docker("run", "--rm", "--network", "none", IMAGE, "python", "-c", code).stdout
     assert "ok" in out
 

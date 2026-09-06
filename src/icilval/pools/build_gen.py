@@ -3,8 +3,10 @@
 `icilval pools generate` runs, inside the BPP checkout:
   gen_extra_libero_envs.py --extra-envs-config-path affordance.yaml --splits <split> --suffix <suffix>
   generate_demonstrations.py --suffix <suffix> --include-splits <views…> --n-demos N --run-dir <dir>
-and `import_generated` copies the run directory's bddl/init/hdf5 into a pool as `generated/<task>`.
-Generation takes hours of CPU; the public LIBERO-Gen splits populate the pool without it.
+and `import_generated` copies the run directory's bddl/init/hdf5 into a pool as
+`generated/<task>` object-swap tasks of the pick-and-place skill (the filter in `build.py`
+drops anything that is not a single grasp-then-place). Generation takes hours of CPU; the
+public LIBERO-Gen splits populate the pool without it.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from ..spec import Spec
-from .build import _gen_task, _swap_from_goal
+from .build import LIBERO_SKILL, _gen_task, _swap_from_goal
 from .schema import Pool
 from .validate import goal_from_bddl
 
@@ -84,8 +86,8 @@ def import_generated(
     run_dir: Path,
     views: list[str],
     *,
-    axis_for_view: dict[str, str],
-    max_steps: dict[str, int],
+    skill: str = LIBERO_SKILL,
+    max_steps: int | None = None,
     validate: bool = True,
 ) -> list[str]:
     """A run dir holds bddl_files/<view>/, init_files/<view>/ and <view>/<task>_demo.hdf5 (or demonstration_data/)."""
@@ -102,13 +104,12 @@ def import_generated(
                 if (run_dir / "demonstration_data" / view).exists()
                 else _shim_root(run_dir, view)
             )
-            axis = axis_for_view.get(view, "object")
             goal = goal_from_bddl(bddl)
-            perturbation: dict[str, Any] = (
-                {**_swap_from_goal(goal), "source_split": view, "generated": True}
-                if axis == "object"
-                else {"kind": "chain", "source_split": view, "generated": True}
-            )
+            perturbation: dict[str, Any] = {
+                **_swap_from_goal(goal),
+                "source_split": view,
+                "generated": True,
+            }
             t = _gen_task(
                 pool,
                 spec,
@@ -116,8 +117,9 @@ def import_generated(
                 view,
                 name,
                 task_id,
-                axis,
-                max_steps.get(axis, 550),
+                skill,
+                "object_swap",
+                max_steps or spec.max_steps(skill),
                 perturbation,
                 validate,
             )

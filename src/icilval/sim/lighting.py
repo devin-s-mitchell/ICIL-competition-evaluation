@@ -1,4 +1,4 @@
-"""Lighting draws for the environment axis. Pure: sampling only, no simulator.
+"""Lighting draws for the environment perturbation. Pure: sampling only, no simulator.
 
 The draw is part of the unit definition, so it is made at derivation time from
 the unit's own generator and recorded verbatim in the published verdict.

@@ -1,7 +1,7 @@
 """Runtime perturbations applied after the initial state is restored.
 
 - displace_objects: LIBERO-PRO's initial-pose case and our level ladder (delta xy + yaw).
-- apply_lighting / restore_lighting: the environment axis's light draw onto the MuJoCo model.
+- apply_lighting / restore_lighting: the environment perturbation's light draw onto the MuJoCo model.
 Both record exactly what they did so the verdict can publish it.
 """
 

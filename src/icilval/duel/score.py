@@ -1,16 +1,15 @@
 """Scoring and the crown rule. Pure functions over unit verdict dicts.
 
-Scores are fractions in [0, 1]. `score_margin` arrives in percentage points and
-is divided by 100 here and nowhere else.
+Scores are fractions in [0, 1]: one success rate per skill and their mean.
+`score_margin` arrives in percentage points and is divided by 100 here and
+nowhere else. The skill list comes from the spec so nothing here names one.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
-
-from ..spec import AXES
 
 SIDES = ("challenger", "king")
 SCORE_EPSILON = 1e-9
@@ -29,11 +28,11 @@ def side_success(unit: dict[str, Any], side: str) -> bool | None:
     return value if isinstance(value, bool) else None
 
 
-def axis_rate(units: Iterable[dict[str, Any]], side: str, axis: str) -> float | None:
+def skill_rate(units: Iterable[dict[str, Any]], side: str, skill: str) -> float | None:
     scored = 0
     successes = 0
     for u in units:
-        if u.get("axis") != axis or u.get("void"):
+        if u.get("skill") != skill or u.get("void"):
             continue
         s = side_success(u, side)
         if s is None:
@@ -43,20 +42,22 @@ def axis_rate(units: Iterable[dict[str, Any]], side: str, axis: str) -> float | 
     return successes / scored if scored else None
 
 
-def average(per_axis: dict[str, float | None]) -> float | None:
-    present = [per_axis[a] for a in AXES if per_axis.get(a) is not None]
+def average(per_skill: dict[str, float | None], skills: Sequence[str]) -> float | None:
+    present = [per_skill[s] for s in skills if per_skill.get(s) is not None]
     return sum(present) / len(present) if present else None
 
 
-def axis_scores(units: Iterable[dict[str, Any]], side: str) -> dict[str, float | None]:
+def skill_scores(
+    units: Iterable[dict[str, Any]], side: str, skills: Sequence[str]
+) -> dict[str, float | None]:
     units = list(units)
-    per = {a: axis_rate(units, side, a) for a in AXES}
-    per["average"] = average(per)
+    per = {s: skill_rate(units, side, s) for s in skills}
+    per["average"] = average(per, skills)
     return per
 
 
-def empty_scores() -> dict[str, float | None]:
-    return {**{a: None for a in AXES}, "average": None}
+def empty_scores(skills: Sequence[str]) -> dict[str, float | None]:
+    return {**{s: None for s in skills}, "average": None}
 
 
 def crown_moves(
@@ -122,10 +123,10 @@ class Verdict:
         return None if k is None or c is None else (c - k) * 100.0
 
 
-def verdict(units: Iterable[dict[str, Any]], score_margin: float) -> Verdict:
+def verdict(units: Iterable[dict[str, Any]], score_margin: float, skills: Sequence[str]) -> Verdict:
     units = list(units)
-    king = axis_scores(units, "king")
-    challenger = axis_scores(units, "challenger")
+    king = skill_scores(units, "king", skills)
+    challenger = skill_scores(units, "challenger", skills)
     moves = crown_moves(king["average"], challenger["average"], score_margin)
     if not units:
         reason = "no-units"

@@ -1,10 +1,11 @@
-# icilval model-side image: BPP's environment + LIBERO + icilval. Model sides run here with
-# `--network none`; the CLIP ViT-B/16 weights BPP's encoder constructs from are baked in.
+# icilval model-side image: BPP's environment (LIBERO and the DrawAnything board) + icilval.
+# Model sides run here with `--network none`; the CLIP ViT-B/16 weights BPP's encoder
+# constructs from are baked in. pygame runs headless (SDL dummy drivers).
 FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive MAMBA_ROOT_PREFIX=/opt/micromamba PATH=/opt/micromamba/envs/bp/bin:/opt/micromamba/bin:$PATH \
     MUJOCO_GL=egl PYOPENGL_PLATFORM=egl HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false \
-    LIBERO_CONFIG_PATH=/etc/libero HF_HOME=/opt/hf
+    LIBERO_CONFIG_PATH=/etc/libero HF_HOME=/opt/hf SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates git bzip2 build-essential cmake linux-libc-dev \
       libegl1 libegl1-mesa-dev libgl1 libgl1-mesa-dev libglvnd-dev libglib2.0-0 libosmesa6 libglew-dev libxrender1 libxext6 libsm6 patchelf \

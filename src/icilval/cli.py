@@ -143,46 +143,54 @@ def cmd_pools(args) -> int:
         finalize,
         open_pool,
         stage_base,
-        stage_composition,
         stage_environment,
         stage_object,
         stage_spatial,
         summary,
         verify_pool,
     )
+    from .pools.build_draw import stage_draw
     from .pools.schema import Pool
-    from .pools.sources import Sources
+    from .pools.sources import DRAW_SOURCES, LIBERO_SOURCES, Sources
     from .spec import _repo_root
 
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
     spec = _spec(args)
-    if args.pools_cmd == "build":
-        out = Path(args.out)
+
+    def sources() -> Sources:
         src = Sources.default(_repo_root() or Path.cwd())
-        if args.libero_root:
+        if getattr(args, "libero_root", None):
             src.libero_root = Path(args.libero_root)
-        if args.raw:
+        if getattr(args, "raw", None):
             raw = Path(args.raw)
             src.libero_datasets, src.libero_pro = raw / "libero_datasets", raw / "libero_pro"
             src.gen_goal_chain, src.gen_spatial_combination = (
                 raw / "libero_gen_goal_chain",
                 raw / "libero_gen_spatial_combination",
             )
-        missing = src.check()
+            src.drawanything = raw / "drawanything_sim"
+        return src
+
+    if args.pools_cmd == "build":
+        out = Path(args.out)
+        src = sources()
+        stages = args.stage or ["base", "spatial", "environment", "object", "draw", "finalize"]
+        needed = tuple(
+            n
+            for n in LIBERO_SOURCES + DRAW_SOURCES
+            if (n in DRAW_SOURCES and "draw" in stages)
+            or (
+                n in LIBERO_SOURCES
+                and any(st in stages for st in ("base", "spatial", "environment", "object"))
+            )
+        )
+        missing = src.check(needed)
         if missing:
             print("missing sources:", *missing, sep="\n  ")
             return 1
         pool = open_pool(out, spec, args.version or str(spec.pools["version"]))
-        stages = args.stage or [
-            "base",
-            "spatial",
-            "environment",
-            "object",
-            "composition",
-            "finalize",
-        ]
         suites = tuple(args.suites) if args.suites else None
         kw = {"limit": args.limit, "validate": not args.no_validate}
         for stage in stages:
@@ -196,18 +204,36 @@ def cmd_pools(args) -> int:
                 stage_environment(pool, spec, src, **({"suites": suites} if suites else {}), **kw)
             elif stage == "object":
                 stage_object(pool, spec, src, **kw)
-            elif stage == "composition":
-                stage_composition(pool, spec, src, **kw)
+            elif stage == "draw":
+                stage_draw(pool, spec, src, limit=args.limit)
             elif stage == "finalize":
-                print("eligible:", finalize(pool, spec))
+                print("eligible:", json.dumps(finalize(pool, spec)))
             else:
                 print("unknown stage", stage)
                 return 2
         pool.save()
         print(json.dumps(summary(pool), indent=1))
         return 0
+    if args.pools_cmd == "upgrade":
+        from .pools.upgrade import upgrade_pool
+
+        out = Path(args.out)
+        pool = upgrade_pool(Path(args.old), out, spec)
+        stages = args.stage if args.stage is not None else ["draw", "finalize"]
+        if "draw" in stages:
+            src = sources()
+            missing = src.check(DRAW_SOURCES)
+            if missing:
+                print("missing sources:", *missing, sep="\n  ")
+                return 1
+            stage_draw(pool, spec, src, limit=args.limit)
+        if "finalize" in stages:
+            print("eligible:", json.dumps(finalize(pool, spec)))
+        pool.save()
+        print(json.dumps(summary(pool), indent=1))
+        return 0
     if args.pools_cmd == "verify":
-        errors = verify_pool(Path(args.pool))
+        errors = verify_pool(Path(args.pool), spec)
         for e in errors:
             print("error:", e)
         print(json.dumps(summary(Pool.load(args.pool)), indent=1))
@@ -236,7 +262,7 @@ def cmd_pools(args) -> int:
 
         root = rr() or Path.cwd()
         bpp = Path(args.bpp_root) if args.bpp_root else root / "vendor" / "behavior_prompting"
-        views = [f"libero_goal_{v}_view" for v in ("icil_object", "icil_chain")]
+        views = ["libero_goal_icil_object_view"]
         run_dir = Path(args.run_dir)
         if not args.import_only:
             generate(
@@ -254,17 +280,34 @@ def cmd_pools(args) -> int:
         if args.pool and not args.dry_run:
             pool = Pool.load(args.pool)
             pool.pool_id = None
-            got = import_generated(
-                pool,
-                spec,
-                run_dir,
-                views,
-                axis_for_view={views[0]: "object", views[1]: "composition"},
-                max_steps={"object": 400, "composition": 800},
-                validate=not args.no_validate,
-            )
+            got = import_generated(pool, spec, run_dir, views, validate=not args.no_validate)
             print("imported", got)
-            print("eligible:", finalize(pool, spec))
+            print("eligible:", json.dumps(finalize(pool, spec)))
+        return 0
+    if args.pools_cmd == "generate-draw":
+        from .pools.build_draw import generate_draw, import_generated_draw
+        from .spec import _repo_root as rr
+
+        root = rr() or Path.cwd()
+        bpp = Path(args.bpp_root) if args.bpp_root else root / "vendor" / "behavior_prompting"
+        run_dir = Path(args.run_dir)
+        if not args.import_only:
+            generate_draw(
+                bpp,
+                run_dir,
+                n_tasks=args.n_tasks,
+                demos_per_task=args.demos_per_task,
+                base_seed=args.base_seed,
+                workers=args.workers,
+                python=args.python,
+                dry_run=args.dry_run,
+            )
+        if args.pool and not args.dry_run:
+            pool = Pool.load(args.pool)
+            pool.pool_id = None
+            got = import_generated_draw(pool, spec, run_dir, limit=args.limit)
+            print("imported", got)
+            print("eligible:", json.dumps(finalize(pool, spec)))
         return 0
     return 2
 
@@ -286,7 +329,7 @@ def _local_models(items: list[str] | None) -> dict[str, str]:
     return out
 
 
-def _runtime(args, spec):
+def _runtime(args, spec, *, enforce_pool_id: bool = True):
     from .daemon import make_runtime
     from .spec import _repo_root
 
@@ -301,6 +344,7 @@ def _runtime(args, spec):
         live_url=args.live,
         live_token=args.live_token,
         mirror_repo=args.mirror,
+        enforce_pool_id=enforce_pool_id,
     )
 
 
@@ -329,14 +373,18 @@ def cmd_check(args) -> int:
 
     spec = _spec(args)
     arch = Path(args.arch) if args.arch else (_repo_root() or Path.cwd()) / "arch"
-    rep = check_submission(Path(args.model), spec, arch)
+    rep = check_submission(
+        Path(args.model), spec, arch, skills=tuple(args.skill) if args.skill else None
+    )
     for e in rep.errors:
         print("error:", e)
     for w in rep.warnings:
         print("warning:", w)
-    print(
-        f"params={rep.param_count} bytes={rep.repo_bytes} model_sha256={rep.model_sha256[:16]} {'OK' if rep.ok else 'REJECTED'}"
-    )
+    for skill, r in rep.skills.items():
+        print(
+            f"{skill}: {r.architecture} params={r.param_count} model_sha256={r.model_sha256[:16]} {'ok' if r.ok else 'rejected'}"
+        )
+    print(f"bytes={rep.repo_bytes} {'OK' if rep.ok else 'REJECTED'}")
     return 0 if rep.ok else 1
 
 
@@ -346,13 +394,10 @@ def cmd_render_demo(args) -> int:
 
     spec = _spec(args)
     pool = Pool.load(args.pool)
-    sha = render_demo(
-        pool.path("demos") / f"{args.demo}.npz",
-        args.out,
-        int(spec.media["video"]["fps"]),
-        spec.media["video"],
-    )
-    print(f"{args.out} sha256={sha}")
+    task_id = args.demo.rsplit("/", 1)[0]
+    skill = pool.tasks[task_id].skill
+    sha = render_demo(pool.path("demos") / f"{args.demo}.npz", args.out, spec, skill)
+    print(f"{args.out} ({skill}) sha256={sha}")
     return 0
 
 
@@ -497,7 +542,7 @@ def cmd_smoke(args) -> int:
         Signer.generate().save(key)
     args.key = str(key)
     args.mirror = None
-    rt = _runtime(args, spec)
+    rt = _runtime(args, spec, enforce_pool_id=False)  # a smoke pool is never the pinned one
     king = ModelRef.make(args.repo, args.revision)
     challenger = ModelRef.make(args.repo, args.revision[::-1] if args.same_model else args.revision)
     local = {args.repo: args.model_dir}
@@ -622,7 +667,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--stage",
         nargs="*",
         default=None,
-        help="base spatial environment object composition finalize",
+        help="base spatial environment object draw finalize",
     )
     po_b.add_argument("--suites", nargs="*", default=None)
     po_b.add_argument(
@@ -634,6 +679,14 @@ def build_parser() -> argparse.ArgumentParser:
     po_b.add_argument("--raw", default=None, help="raw cache dir (default ~/.cache/icilval/raw)")
     po_b.add_argument("--libero-root", default=None)
     po_b.add_argument("--version", default=None)
+    po_u = po_sub.add_parser(
+        "upgrade", help="schema-1 pool (four axes) -> schema-2 pool (skills) + the draw stage"
+    )
+    po_u.add_argument("--old", required=True, help="the schema-1 pool directory")
+    po_u.add_argument("--out", required=True)
+    po_u.add_argument("--stage", nargs="*", default=None, help="draw finalize (default: both)")
+    po_u.add_argument("--limit", type=int, default=None)
+    po_u.add_argument("--raw", default=None, help="raw cache dir (default ~/.cache/icilval/raw)")
     po_v = po_sub.add_parser("verify")
     po_v.add_argument("pool")
     po_p = po_sub.add_parser("push")
@@ -657,6 +710,20 @@ def build_parser() -> argparse.ArgumentParser:
     po_g.add_argument("--dry-run", action="store_true")
     po_g.add_argument("--import-only", action="store_true")
     po_g.add_argument("--no-validate", action="store_true")
+    po_gd = po_sub.add_parser(
+        "generate-draw", help="run BPP's procedural drawing generator, then import"
+    )
+    po_gd.add_argument("--run-dir", required=True)
+    po_gd.add_argument("--pool", default=None)
+    po_gd.add_argument("--n-tasks", type=int, default=50)
+    po_gd.add_argument("--demos-per-task", type=int, default=10)
+    po_gd.add_argument("--base-seed", type=int, required=True, help="the organizer's secret seed")
+    po_gd.add_argument("--workers", type=int, default=8)
+    po_gd.add_argument("--python", default="python")
+    po_gd.add_argument("--bpp-root", default=None)
+    po_gd.add_argument("--limit", type=int, default=None)
+    po_gd.add_argument("--dry-run", action="store_true")
+    po_gd.add_argument("--import-only", action="store_true")
     po.set_defaults(func=cmd_pools)
 
     u = sub.add_parser("units", help="derive a duel's unit list")
@@ -671,7 +738,7 @@ def build_parser() -> argparse.ArgumentParser:
     c = sub.add_parser("convert-ckpt", help="BPP checkpoint -> model.safetensors + config.yaml")
     c.add_argument("--ckpt", required=True)
     c.add_argument("--out", required=True)
-    c.add_argument("--arch-name", default="bpp_libero_v1")
+    c.add_argument("--arch-name", required=True, help="bpp_libero_v1 or bpp_draw_v1")
     c.add_argument("--emit-arch", default=None, help="also write the arch templates into this dir")
     c.set_defaults(func=cmd_convert)
 
@@ -680,14 +747,21 @@ def build_parser() -> argparse.ArgumentParser:
     f.add_argument("--dest", required=True)
     f.set_defaults(func=cmd_fetch)
 
-    ck = sub.add_parser("check-model", help="fingerprint a model directory")
+    ck = sub.add_parser(
+        "check-model", help="fingerprint a submission directory (one dir per skill)"
+    )
     ck.add_argument("model")
     ck.add_argument("--arch", default=None)
+    ck.add_argument("--skill", action="append", default=None, help="check only these skills")
     ck.set_defaults(func=cmd_check)
 
     rd = sub.add_parser("render-demo", help="render a pool demonstration to mp4")
     rd.add_argument("--pool", required=True)
-    rd.add_argument("--demo", required=True, help="demo id, e.g. libero_spatial/<task>/demo_00")
+    rd.add_argument(
+        "--demo",
+        required=True,
+        help="demo id, e.g. libero_spatial/<task>/demo_00 or drawanything_handmade/<task>/demo_00",
+    )
     rd.add_argument("--out", required=True)
     rd.set_defaults(func=cmd_render_demo)
 
@@ -734,8 +808,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_runtime_args(sm)
     sm.set_defaults(key=None)
-    sm.add_argument("--model-dir", required=True, help="local converted model directory")
-    sm.add_argument("--repo", default="local/bpp-libero-genesis")
+    sm.add_argument(
+        "--model-dir",
+        required=True,
+        help="local submission directory: <skill>/model.safetensors per skill",
+    )
+    sm.add_argument("--repo", default="local/bpp-genesis")
     sm.add_argument("--revision", default="0000000000000000000000000000000000000001")
     sm.add_argument(
         "--same-model",

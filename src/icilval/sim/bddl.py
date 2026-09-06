@@ -347,7 +347,7 @@ def libero_pro_initial_pose(tree: Node) -> dict[str, Any] | None:
     }
 
 
-# ---------------------------------------------------- table swap (environment axis)
+# ---------------------------------------------------- table swap (environment perturbation)
 TABLES: dict[str, dict[str, str]] = {
     "main_table": {"problem": "LIBERO_Tabletop_Manipulation", "type": "table"},
     "kitchen_table": {"problem": "LIBERO_Kitchen_Tabletop_Manipulation", "type": "kitchen_table"},

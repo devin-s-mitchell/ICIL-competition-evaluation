@@ -1,7 +1,10 @@
-"""Is this submission a BPP checkpoint of the allow-listed architecture? Decided without torch.
+"""Is this submission a set of BPP checkpoints of the allow-listed architectures? Decided
+without torch.
 
-- config.yaml is parsed with yaml.safe_load and diffed against arch/<name>.cfg.json.
-- model.safetensors' header (JSON, no tensor data) is compared with arch/<name>.tensors.json.
+A submission holds one directory per skill (`spec.model.layout`). For each skill:
+- `<skill>/config.yaml` is parsed with yaml.safe_load and diffed against arch/<name>.cfg.json.
+- `<skill>/model.safetensors`' header (JSON, no tensor data) is compared with
+  arch/<name>.tensors.json.
 Nothing here executes anything from the submission.
 """
 
@@ -19,17 +22,34 @@ from ..spec import Spec
 
 
 @dataclass
-class CheckReport:
+class SkillReport:
+    skill: str
+    architecture: str
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     param_count: int = 0
-    repo_bytes: int = 0
     config_sha256: str = ""
     model_sha256: str = ""
 
     @property
     def ok(self) -> bool:
         return not self.errors
+
+
+@dataclass
+class CheckReport:
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    repo_bytes: int = 0
+    skills: dict[str, SkillReport] = field(default_factory=dict)
+
+    @property
+    def ok(self) -> bool:
+        return not self.errors
+
+    @property
+    def param_count(self) -> int:
+        return sum(r.param_count for r in self.skills.values())
 
 
 def load_arch(arch_dir: str | Path, name: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -96,39 +116,27 @@ def _numel(shape: list[int]) -> int:
     return n
 
 
-def check_submission(model_dir: str | Path, spec: Spec, arch_dir: str | Path) -> CheckReport:
+def check_skill(skill_dir: str | Path, spec: Spec, arch_dir: str | Path, skill: str) -> SkillReport:
+    """One skill's directory against its architecture template."""
     from ..canon import sha256_file
 
-    report = CheckReport()
-    model_dir = Path(model_dir)
+    skill_dir = Path(skill_dir)
     model_spec = spec.model
-    name = str(model_spec["architecture"])
+    name = spec.architecture(skill)
+    report = SkillReport(skill=skill, architecture=name)
     try:
         template_cfg, template_tensors = load_arch(arch_dir, name)
     except OSError as exc:
         report.errors.append(f"architecture template unavailable: {exc}")
         return report
-
-    # files
-    allowed_ext = set(model_spec["allowed_extensions"])
-    for p in sorted(model_dir.rglob("*")):
-        if p.is_dir() or any(part.startswith(".") for part in p.relative_to(model_dir).parts):
-            continue
-        report.repo_bytes += p.stat().st_size
-        if p.suffix.lower() not in allowed_ext:
-            report.errors.append(f"{p.relative_to(model_dir)}: extension not allowed")
-    if report.repo_bytes > int(model_spec["max_repo_bytes"]):
-        report.errors.append(
-            f"repository is {report.repo_bytes} bytes; limit {model_spec['max_repo_bytes']}"
-        )
     for required in model_spec["required_files"]:
-        if not (model_dir / required).exists():
+        if not (skill_dir / required).exists():
             report.errors.append(f"{required} missing")
     if report.errors:
         return report
 
     # config
-    cfg_path = model_dir / "config.yaml"
+    cfg_path = skill_dir / "config.yaml"
     try:
         submitted = yaml.safe_load(cfg_path.read_text())
     except yaml.YAMLError as exc:
@@ -152,7 +160,7 @@ def check_submission(model_dir: str | Path, spec: Spec, arch_dir: str | Path) ->
     report.config_sha256 = sha256_file(cfg_path)
 
     # tensors
-    st_path = model_dir / "model.safetensors"
+    st_path = skill_dir / "model.safetensors"
     try:
         header = read_safetensors_header(st_path)
     except (OSError, ValueError, struct.error) as exc:
@@ -184,4 +192,37 @@ def check_submission(model_dir: str | Path, spec: Spec, arch_dir: str | Path) ->
             f"model has {report.param_count} parameters; limit {model_spec['max_params']}"
         )
     report.model_sha256 = sha256_file(st_path)
+    return report
+
+
+def check_submission(
+    model_dir: str | Path, spec: Spec, arch_dir: str | Path, skills: tuple[str, ...] | None = None
+) -> CheckReport:
+    """The whole repository: file allow-list and size, then every skill's directory."""
+    report = CheckReport()
+    model_dir = Path(model_dir)
+    model_spec = spec.model
+    allowed_ext = set(model_spec["allowed_extensions"])
+    for p in sorted(model_dir.rglob("*")):
+        if p.is_dir() or any(part.startswith(".") for part in p.relative_to(model_dir).parts):
+            continue
+        report.repo_bytes += p.stat().st_size
+        if p.suffix.lower() not in allowed_ext:
+            report.errors.append(f"{p.relative_to(model_dir)}: extension not allowed")
+    if report.repo_bytes > int(model_spec["max_repo_bytes"]):
+        report.errors.append(
+            f"repository is {report.repo_bytes} bytes; limit {model_spec['max_repo_bytes']}"
+        )
+    for skill in skills or spec.skills:
+        sub = model_dir / skill
+        if not sub.is_dir():
+            report.skills[skill] = SkillReport(
+                skill, spec.architecture(skill), [f"{skill}/ missing"]
+            )
+            report.errors.append(f"{skill}: directory missing ({spec.model['layout']})")
+            continue
+        r = check_skill(sub, spec, arch_dir, skill)
+        report.skills[skill] = r
+        report.errors.extend(f"{skill}: {e}" for e in r.errors)
+        report.warnings.extend(f"{skill}: {w}" for w in r.warnings)
     return report

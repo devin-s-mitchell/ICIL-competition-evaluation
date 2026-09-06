@@ -2,9 +2,10 @@
 
 fetching -> checking -> evaluating(challenger) -> evaluating(king) -> publishing -> done|failed
 
-Each side runs either in-process (this interpreter has the simulator) or in an isolated
-container with no network. Progress is posted as live frames; finished clips are copied into
-the store every few units so the dashboard can show them while the duel runs.
+Each side runs either in-process (this interpreter has the simulators) or in an isolated
+container with no network. A side runs every skill's units with that skill's checkpoint from
+the submission. Progress is posted as live frames; finished clips are copied into the store
+every few units so the dashboard can show them while the duel runs.
 """
 
 from __future__ import annotations
@@ -132,7 +133,8 @@ class Orchestrator:
                     u[f"{s}_video"] = sha
                     state["recent_media"] = {
                         "unit": {
-                            "axis": u["axis"],
+                            "skill": u["skill"],
+                            "kind": u.get("kind"),
                             "task": u["task"],
                             "task_label": u.get("task_label"),
                             "instance": u["instance"],
@@ -154,6 +156,7 @@ class Orchestrator:
             else:
                 u[f"{side}_success"] = bool(rec.get("success"))
                 u[f"{side}_progress"] = rec.get("progress")
+                u[f"{side}_metric"] = rec.get("metric")
                 u[f"{side}_steps"] = rec.get("steps")
                 u[f"{side}_error"] = rec.get("error")
                 if rec.get("prompt_chunks"):
@@ -297,15 +300,20 @@ class Orchestrator:
                 dirs[side] = got.path
             # ---- checking
             self._post(
-                state, force=True, phase="checking", message="checking architecture and weights"
+                state, force=True, phase="checking", message="checking architectures and weights"
             )
             for side, d in dirs.items():
                 rep = check_submission(d, spec, self.rt.arch_dir)
                 sides_meta[side] = {
-                    "model_sha256": rep.model_sha256,
-                    "config_sha256": rep.config_sha256,
-                    "param_count": rep.param_count,
                     "repo_bytes": rep.repo_bytes,
+                    "skills": {
+                        s: {
+                            "model_sha256": r.model_sha256,
+                            "config_sha256": r.config_sha256,
+                            "param_count": r.param_count,
+                        }
+                        for s, r in rep.skills.items()
+                    },
                 }
                 if not rep.ok and not (req.skip_model_check and side == "challenger"):
                     raise DuelFailed(f"{side} failed the model check: " + "; ".join(rep.errors[:5]))
@@ -336,7 +344,7 @@ class Orchestrator:
                 if time.monotonic() - t0 > float(spec.budgets["duel_wall_seconds"]):
                     raise DuelFailed("duel wall time exceeded")
             # ---- scoring
-            v = score.verdict(state["units"], spec.score_margin)
+            v = score.verdict(state["units"], spec.score_margin, spec.skills)
             if score.void_fraction(state["units"]) > spec.max_void_fraction:
                 raise DuelFailed(f"{v.tally.void} of {len(state['units'])} units void")
             # ---- publishing
@@ -368,7 +376,7 @@ class Orchestrator:
                 spec_version=spec.version,
                 spec_fingerprint=spec.fingerprint,
                 units=state["units"],
-                units_per_axis=spec.units_per_axis(size),
+                units_per_skill=spec.units_per_skill(size),
                 started_at=state["started_at"],
                 wall_seconds=time.monotonic() - t0,
                 sides=sides_meta,
@@ -401,7 +409,6 @@ class Orchestrator:
         if not self.spec.media.get("demo_video", True):
             return
         ext = str(self.spec.media["video"]["format"])
-        fps = int(self.spec.media["video"]["fps"])
         demo_dir = run_dir / "demos"
         demo_dir.mkdir(exist_ok=True)
         cache: dict[str, str] = {}
@@ -414,8 +421,8 @@ class Orchestrator:
                     render_demo(
                         self.rt.pool.path("demos") / f"{demo}.npz",
                         out,
-                        fps,
-                        self.spec.media["video"],
+                        self.spec,
+                        d["skill"],
                     )
                     sha = self.rt.store.put_media(out, ext)
                     touched.append(
@@ -480,7 +487,7 @@ def publish_genesis(
         spec_version=spec.version,
         spec_fingerprint=spec.fingerprint,
         units=[],
-        units_per_axis=0,
+        units_per_skill=0,
         started_at=now_iso(),
         wall_seconds=0.0,
         notes=["The opening entrant took an empty throne."],

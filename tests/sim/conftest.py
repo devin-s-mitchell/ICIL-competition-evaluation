@@ -10,9 +10,15 @@ SMOKE_POOL = Path(
 )
 
 
+PP = "pick_and_place"
+DA = "draw_anything"
+
+
 def _has_sim() -> bool:
     try:
         import libero  # noqa: F401
+        import pygame  # noqa: F401
+        import pymunk  # noqa: F401
         import robosuite  # noqa: F401
     except ImportError:
         return False
@@ -22,8 +28,10 @@ def _has_sim() -> bool:
 @pytest.fixture(scope="session", autouse=True)
 def _sim_env():
     if not _has_sim():
-        pytest.skip("simulator not importable (run in the BPP conda env)")
+        pytest.skip("simulators not importable (run in the BPP conda env)")
     os.environ.setdefault("MUJOCO_GL", "egl")
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 
 @pytest.fixture(scope="session")

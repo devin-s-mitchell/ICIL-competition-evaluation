@@ -128,10 +128,10 @@ def regenerate_init_states(
 
 
 def build_variant_env(
-    bddl_path: Path, spec: Spec, scene_properties: dict[str, str] | None = None
+    bddl_path: Path, spec: Spec, skill: str, scene_properties: dict[str, str] | None = None
 ) -> LiberoEnv | None:
     try:
-        return LiberoEnv(bddl_path, spec, scene_properties=scene_properties)
+        return LiberoEnv(bddl_path, spec, skill=skill, scene_properties=scene_properties)
     except Exception as exc:  # noqa: BLE001
         log.warning("cannot build %s: %s", bddl_path.name, exc)
         return None

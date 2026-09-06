@@ -35,6 +35,17 @@ LIBERO_GOAL_ORIGINALS = {
     "turn_on_the_stove",
 }
 
+DRAW_HANDMADE = "eval_handmade.zarr"
+
+LIBERO_SOURCES = (
+    "libero_root",
+    "libero_datasets",
+    "libero_pro",
+    "gen_goal_chain",
+    "gen_spatial_combination",
+)
+DRAW_SOURCES = ("drawanything",)
+
 
 @dataclass
 class Sources:
@@ -43,6 +54,7 @@ class Sources:
     libero_pro: Path  # raw/libero_pro (bddl_files/, init_files/)
     gen_goal_chain: Path  # raw/libero_gen_goal_chain
     gen_spatial_combination: Path  # raw/libero_gen_spatial_combination
+    drawanything: Path  # raw/drawanything_sim (eval_handmade.zarr, unpacked)
     bpp_root: Path  # vendor/behavior_prompting
 
     @classmethod
@@ -55,18 +67,18 @@ class Sources:
             libero_pro=raw / "libero_pro",
             gen_goal_chain=raw / "libero_gen_goal_chain",
             gen_spatial_combination=raw / "libero_gen_spatial_combination",
+            drawanything=raw / "drawanything_sim",
             bpp_root=bpp,
         )
 
-    def check(self) -> list[str]:
+    @property
+    def draw_handmade(self) -> Path:
+        return self.drawanything / DRAW_HANDMADE
+
+    def check(self, names: tuple[str, ...] = LIBERO_SOURCES + DRAW_SOURCES) -> list[str]:
         missing = []
-        for name, p in [
-            ("libero_root", self.libero_root),
-            ("libero_datasets", self.libero_datasets),
-            ("libero_pro", self.libero_pro),
-            ("gen_goal_chain", self.gen_goal_chain),
-            ("gen_spatial_combination", self.gen_spatial_combination),
-        ]:
+        for name in names:
+            p = getattr(self, name)
             if not p.exists():
                 missing.append(f"{name}: {p}")
         return missing

@@ -159,8 +159,9 @@ class _Sink(BaseHTTPRequestHandler):
 def test_live_frame_and_reporter(spec):
     units = [
         {
-            "unit_id": "sp-000",
-            "axis": "spatial",
+            "unit_id": "pp-000",
+            "skill": "pick_and_place",
+            "kind": "spatial",
             "task": "t",
             "instance": 0,
             "king_success": True,
@@ -169,8 +170,9 @@ def test_live_frame_and_reporter(spec):
             "demo_video": "a" * 64,
         },
         {
-            "unit_id": "ob-000",
-            "axis": "object",
+            "unit_id": "da-000",
+            "skill": "draw_anything",
+            "kind": "rotation",
             "task": "t2",
             "instance": 1,
             "king_success": None,
@@ -189,7 +191,7 @@ def test_live_frame_and_reporter(spec):
         phase="evaluating",
         side="king",
         units=units,
-        current={"unit_id": "ob-000", "axis": "object"},
+        current={"unit_id": "da-000", "skill": "draw_anything"},
         recent_media=None,
         message="m" * 400,
         started_at="2026-01-01T00:00:00Z",
@@ -197,9 +199,12 @@ def test_live_frame_and_reporter(spec):
     assert (
         frame["done"] == 1
         and frame["total"] == 2
-        and frame["axis_progress"]["king"]["spatial"] == {"done": 1, "total": 1}
+        and frame["skill_progress"]["king"]["pick_and_place"] == {"done": 1, "total": 1}
     )
-    assert frame["axis_progress"]["challenger"]["spatial"]["done"] == 0
+    assert frame["skill_progress"]["challenger"]["pick_and_place"]["done"] == 0
+    assert (
+        frame["units"][0]["skill"] == "pick_and_place" and frame["units"][1]["kind"] == "rotation"
+    )
     assert (
         len(frame["message"]) == 300
         and frame["units"][0]["outcome"] is None

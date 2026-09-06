@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from icilval.model import rotations as R
-from icilval.model.prompt import build_prompt, chunk_layout
+from icilval.model.prompt import build_draw_prompt, build_prompt, chunk_layout
 
 
 def test_rot6d_identity_and_roundtrip():
@@ -42,8 +42,23 @@ def test_quat_and_actions():
         (1001, 51, 1020),
     ],
 )
-def test_chunk_layout(steps, chunks, padded):
+def test_chunk_layout_zeros(steps, chunks, padded):
     assert chunk_layout(steps, 20) == (chunks, padded)
+    assert chunk_layout(steps, 20, "repeat") == (chunks, padded)
+
+
+@pytest.mark.parametrize(
+    "steps,chunks,padded",
+    [(135, 13, 130), (10, 1, 10), (40, 4, 40), (5, 1, 10), (1, 1, 10), (396, 39, 390)],
+)
+def test_chunk_layout_no_padding(steps, chunks, padded):
+    """BPP's `pad_end_prompt_actions: no` (the drawing skill): a partial chunk is dropped."""
+    assert chunk_layout(steps, 10, "no") == (chunks, padded)
+
+
+def test_chunk_layout_rejects_bad_mode():
+    with pytest.raises(ValueError):
+        chunk_layout(10, 5, "maybe")
 
 
 def fake_demo(T):
@@ -72,3 +87,29 @@ def test_build_prompt_shapes_and_padding():
         build_prompt(fake_demo(1200), 20, max_chunks=50)
     short, info = build_prompt(fake_demo(5), 20)
     assert info.chunks == 1 and short["obs"]["ee_pos"].shape == (1, 3)
+
+
+def fake_draw_demo(T):
+    return {
+        "image": np.zeros((T, 224, 224, 3), np.uint8),
+        "agent_pos": np.arange(T * 2, dtype=np.float32).reshape(T, 2),
+        "pen_down": (np.arange(T) % 2).astype(np.float32),
+        "actions": np.tile(np.array([[100.0, 200.0, 1.0]], np.float32), (T, 1)),
+    }
+
+
+def test_build_draw_prompt_drops_partial_chunk():
+    prompt, info = build_draw_prompt(fake_draw_demo(135), 10, max_chunks=80)
+    assert (info.steps, info.chunks, info.padded_steps) == (135, 13, 130)
+    assert prompt["action"].shape == (13, 10, 3) and np.all(prompt["action"][:, :, 2] == 1)
+    assert prompt["obs"]["image"].shape == (13, 224, 224, 3)
+    assert prompt["obs"]["agent_pos"].shape == (13, 2) and np.allclose(
+        prompt["obs"]["agent_pos"][1], [20, 21]
+    )
+    assert prompt["obs"]["pen_down"].shape == (13, 1)
+    assert prompt["mask"].shape == (13,) and not prompt["mask"].any()
+    short, info = build_draw_prompt(fake_draw_demo(4), 10)
+    assert info.chunks == 1 and short["action"].shape == (1, 10, 3)
+    assert np.all(short["action"][0, 4:] == 0) and np.all(short["action"][0, :4, 0] == 100)
+    with pytest.raises(ValueError):
+        build_draw_prompt(fake_draw_demo(900), 10, max_chunks=80)

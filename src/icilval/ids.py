@@ -54,12 +54,13 @@ def event_id(kind: str, track: str, block: int, subject: str) -> str:
     return sha256_hex("|".join(["event", kind, track, str(block), subject]))
 
 
-def unit_seed(duel: str, axis: str, index: int) -> int:
-    return int(sha256_hex(f"{duel}|{axis}|{index}")[:8], 16)
+def unit_seed(duel: str, skill: str, index: int) -> int:
+    return int(sha256_hex(f"{duel}|{skill}|{index}")[:8], 16)
 
 
-def unit_id(axis: str, index: int) -> str:
-    return f"{axis[:2]}-{index:03d}"
+def unit_id(code: str, index: int) -> str:
+    """`<skill code>-<index>`: the code is the two-letter `skills.<skill>.code`."""
+    return f"{code}-{index:03d}"
 
 
 def is_repo(value: str) -> bool:
