@@ -12,6 +12,7 @@
 - (feat): draw-board tests (`-m sim`) and a drawing parity test (`-m gpu`); the container image runs pygame headless.
 - smoke (spec v2): `icilval smoke` on the two-skill genesis over the upgraded smoke pool publishes 2 signed events with 12 clips; both sides reproduce identical trajectories on both simulators (6 ties, Δ = 0, identical clip hashes, crown stays); `store verify` passes; the dashboard renders the store.
 - parity (draw): the converted `austinpatel/drawanything_sim` checkpoint redraws human demonstrations on a turned board within 4 px on 0.79 of 80 calibration units (median best Chamfer 2.5 px).
+- container mode (spec v2): `icilval duel --docker-image icilval/model:dev` runs both sides of a two-skill duel inside the rebuilt image with `--network none` (6 units per side, 3 per skill, identical outcomes and Chamfer values on both sides, 12 clips, `store verify` OK); `pytest -m container` passes 3/3 including a headless `DrawEnv` reset.
 
 - (feat): contract (`spec.json`, `store-schema.json`), ids, scoring, unit derivation, signed store, queue, admin intake, live reporter.
 - (feat): BPP model path (converter, fingerprint, inference), simulator runner, pool builders, duel orchestration, mirror, daemon, Docker recipe.
