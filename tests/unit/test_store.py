@@ -170,3 +170,20 @@ def test_store_lock_is_exclusive(tmp_path):
                 pass
     with store_lock(tmp_path / "s"):
         pass
+
+
+def test_mirror_lists_only_the_store_files(spec, tmp_path):
+    """The lock and anything else dotted is the store's own bookkeeping, not the record."""
+    from icilval.store.mirror import store_files
+    from icilval.store.writer import store_lock
+
+    signer = Signer.generate()
+    store = Store(tmp_path / "store", spec, signer)
+    store.init(signer.verify_key_hex, None)
+    with store_lock(tmp_path / "store"):
+        pass
+    assert (tmp_path / "store" / ".validator.lock").exists()
+    files = store_files(tmp_path / "store")
+    assert "manifest.json" in files
+    assert f"tracks/{spec.track_id}/head.json" in files
+    assert not any(f.startswith(".") or "/." in f for f in files)

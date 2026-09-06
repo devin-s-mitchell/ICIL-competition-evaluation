@@ -27,6 +27,19 @@ directory as `spec.baseline.repo`, pin the revision, then `icilval genesis --kin
 
 The drawing board runs pygame headless: `SDL_VIDEODRIVER=dummy` (the container sets it).
 
+## Publishing
+
+```bash
+icilval pools push pools/2026.09-v2 --repo robotensor/icil-competition-pools   # then pin pools.pool_id
+huggingface-cli upload robotensor/bpp-genesis models/genesis .                  # then pin baseline.revision
+icilval store mirror store --repo robotensor/icil-competition-results --message "publish"
+```
+
+The daemon mirrors as it publishes; `store mirror` is for a store built by hand. Pass `--prune`
+when the store was **rebuilt** rather than appended to — a schema change, a new pool — so the one
+commit uploads every file and deletes every path the store no longer has. Without it the previous
+layout's records and clips stay in the repo beside the new ones, under names nothing references.
+
 ## Container mode and filesystems
 
 Model sides run as `docker run --network none --gpus all` with the model, pool, arch templates and

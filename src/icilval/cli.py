@@ -69,7 +69,9 @@ def cmd_store(args) -> int:
     if args.store_cmd == "mirror":
         from .store.mirror import mirror_store
 
-        n = mirror_store(args.root, args.repo, spec, message=args.message, all_files=args.all)
+        n = mirror_store(
+            args.root, args.repo, spec, message=args.message, all_files=args.all, prune=args.prune
+        )
         print(f"mirrored {n} files to {args.repo}")
         return 0
     return 2
@@ -635,6 +637,12 @@ def build_parser() -> argparse.ArgumentParser:
     st_mir.add_argument("--message", default="publish")
     st_mir.add_argument(
         "--all", action="store_true", help="upload every file, not only changed ones"
+    )
+    st_mir.add_argument(
+        "--prune",
+        action="store_true",
+        help="make the repo exactly this store in one commit: upload every file and delete every "
+        "path the store no longer has (for a rebuilt store, e.g. after a schema change)",
     )
     st.set_defaults(func=cmd_store)
 

@@ -260,9 +260,9 @@
   },
   "baseline": {
     "repo": "robotensor/bpp-genesis",
-    "revision": null,
+    "revision": "213d56f7f3fa6bc89032c44c602dedfe6822b854",
     "label": "BPP public checkpoints (austinpatel/libero and austinpatel/drawanything_sim, converted)",
-    "_comment": "The genesis king: one repo holding both converted public checkpoints. revision is pinned when it is published."
+    "_comment": "The genesis king: one repo holding both converted public checkpoints, one directory per skill."
   },
   "media": {
     "video": {

@@ -4,10 +4,24 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from ..spec import Spec
 
 log = logging.getLogger(__name__)
+
+
+def store_files(root: Path) -> list[str]:
+    """Every file of a store that belongs in the mirror, relative to its root.
+
+    Dotfiles are the store's own bookkeeping — `.validator.lock` above all — and are not part of
+    what a reader verifies, so they never leave the machine.
+    """
+    return sorted(
+        str(p.relative_to(root))
+        for p in root.rglob("*")
+        if p.is_file() and not any(part.startswith(".") for part in p.relative_to(root).parts)
+    )
 
 
 class Mirror:
@@ -41,8 +55,37 @@ class Mirror:
             repo_id=self.repo,
             repo_type="dataset",
             commit_message=message,
+            ignore_patterns=[".*", "**/.*"],
         )
         return str(getattr(info, "oid", info))
+
+    def replace_all(self, message: str = "replace the store") -> str:
+        """One commit that makes the repo exactly the local store: every file added, every path
+        the store no longer has deleted.
+
+        `push_all` only ever adds, which is right while a store grows. It is wrong when a store is
+        rebuilt — a schema change, a new pool — because the previous layout's records and clips
+        would linger beside the new ones under names nothing references. Deleting and adding in a
+        single commit means a reader never sees the two mixed, and never sees an empty store.
+        """
+        from huggingface_hub import CommitOperationAdd, CommitOperationDelete
+
+        local = store_files(self.root)
+        if not local:
+            raise ValueError(f"{self.root} holds no files; refusing to empty {self.repo}")
+        info = self.api.repo_info(self.repo, repo_type="dataset", files_metadata=False)
+        remote = {s.rfilename for s in (info.siblings or [])}
+        # `.gitattributes` is the Hub's own, not ours.
+        stale = sorted(remote - set(local) - {".gitattributes"})
+        ops: list[Any] = [CommitOperationDelete(path_in_repo=f) for f in stale]
+        ops += [
+            CommitOperationAdd(path_in_repo=f, path_or_fileobj=str(self.root / f)) for f in local
+        ]
+        commit = self.api.create_commit(
+            repo_id=self.repo, repo_type="dataset", operations=ops, commit_message=message
+        )
+        log.info("replaced %s: %d files, %d stale paths removed", self.repo, len(local), len(stale))
+        return str(getattr(commit, "oid", ""))
 
 
 def mirror_store(
@@ -52,12 +95,16 @@ def mirror_store(
     *,
     message: str = "publish",
     all_files: bool = False,
+    prune: bool = False,
     files: list[str] | None = None,
     token: str | None = None,
 ) -> int:
     m = Mirror(Path(root), repo, token=token)
+    if prune:
+        m.replace_all(message)
+        return len(store_files(Path(root)))
     if all_files or files is None:
         m.push_all(message)
-        return sum(1 for _ in Path(root).rglob("*") if _.is_file())
+        return len(store_files(Path(root)))
     m.push(files, message)
     return len(files)
