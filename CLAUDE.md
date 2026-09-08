@@ -27,8 +27,14 @@ to a Hugging Face dataset, and posts live frames to the dashboard. Follows the c
 
 ## Conventions
 
-- Commit titles: `(feat): short description`, `(fix): …`; one coherent change per commit,
-  brief bullets in the body when needed; commit at logical checkpoints.
-- Keep PRs focused and reviewable; include tests and a CHANGELOG entry.
+- Small commits. One concern per commit (a rename, a schema change, a new stage, a doc update),
+  never a whole issue in one commit. Each commit builds and passes the pure tests on its own, so
+  the history bisects and reverts cleanly. Split mechanical moves from behaviour changes.
+- Commit title: `(feat): …`, `(fix): …`, `(refactor): …`, `(docs): …`, `(test): …`, `(chore): …`;
+  imperative, lower-case after the prefix, under 72 characters, no trailing period. Body: why the
+  change, not what the diff shows; short bullets; `Refs #N` for the issue it advances,
+  `Closes #N` only on the commit that finishes it.
+- One branch per issue (`issue-N-short-slug`) off `main`; one PR per issue with `Closes #N`, tests
+  and a CHANGELOG entry. Rebase, do not merge `main` into the branch.
 - Reports and evaluation results are plain files in the repository or run directory, not hosted
   artifacts.
