@@ -2,7 +2,6 @@
 
 ## Unreleased
 
-
 ### Skills (spec v2, store schema 2, live schema 2)
 
 - (feat): the four perturbation axes become **skills**: `pick_and_place` (LIBERO, `bpp_libero_v1`) and `draw_anything` (DrawAnything-Sim, `bpp_draw_v1`). Each skill is one success rate; the final score is the mean over skills; a skill's units are spread evenly over its perturbation groups (spatial / environment / object; rotation), which are published per unit and never scored. Composition is dropped (BPP's separate chain domain).
